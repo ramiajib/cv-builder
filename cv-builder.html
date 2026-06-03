@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>CV Builder | مساعد السيرة الذاتية</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family:'Segoe UI',Arial,sans-serif; background:#ECE5DD; min-height:100vh; display:flex; flex-direction:column; max-width:480px; margin:0 auto; }
+    .header { background:#075E54; color:white; padding:10px 16px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:10; }
+    .avatar { width:42px; height:42px; background:#25D366; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+    .header h1 { font-size:16px; font-weight:600; }
+    .header p  { font-size:12px; opacity:.75; margin-top:1px; }
+    .prog-wrap { background:#054c44; height:4px; }
+    .prog-bar  { height:100%; background:#25D366; transition:width .6s ease; width:0; }
+    .chat { flex:1; overflow-y:auto; padding:14px 12px 10px; display:flex; flex-direction:column; gap:6px; }
+    .bubble { max-width:84%; padding:9px 13px; border-radius:8px; font-size:14px; line-height:1.6; word-wrap:break-word; animation:pop .2s ease; }
+    @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .bubble-bot  { background:white; border-top-left-radius:0; align-self:flex-start; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+    .bubble-user { background:#DCF8C6; border-top-right-radius:0; align-self:flex-end; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+    .dots{display:flex;gap:5px;align-items:center;padding:3px 2px}
+    .dots span{width:8px;height:8px;background:#bbb;border-radius:50%;animation:bounce 1.1s infinite}
+    .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+    @keyframes bounce{0%,60%,100%{transform:none}30%{transform:translateY(-6px)}}
+    .spin{width:16px;height:16px;border:2.5px solid #d9d9d9;border-top-color:#075E54;border-radius:50%;display:inline-block;animation:rot .7s linear infinite;flex-shrink:0}
+    @keyframes rot{to{transform:rotate(360deg)}}
+    .choices{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 10px;justify-content:center}
+    .choice-btn{border:1.5px solid #25D366;background:white;color:#075E54;padding:8px 18px;border-radius:20px;font-size:13px;font-family:inherit;cursor:pointer;transition:all .15s}
+    .choice-btn:hover,.choice-btn:active{background:#25D366;color:white}
+    .choice-btn.primary{background:#075E54;color:white;font-size:14px;padding:12px 26px;border-color:#075E54}
+    .choice-btn.primary:hover{background:#054c44}
+    .input-row{background:#F0F0F0;padding:8px 10px;display:flex;gap:8px;align-items:flex-end}
+    .chat-input{flex:1;border:none;border-radius:20px;padding:10px 16px;font-size:14px;font-family:inherit;resize:none;outline:none;min-height:44px;max-height:130px}
+    .send-btn{width:44px;height:44px;background:#25D366;border:none;border-radius:50%;color:white;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background .15s}
+    .send-btn:hover{background:#128C7E}
+    .hidden{display:none!important}
+    body.rtl{direction:rtl}
+    body.rtl .bubble-bot{border-top-left-radius:8px;border-top-right-radius:0}
+    body.rtl .bubble-user{border-top-right-radius:8px;border-top-left-radius:0}
+    body.rtl .chat-input{text-align:right}
+    /* CV Overlay */
+    #cv-overlay{display:none;position:fixed;inset:0;background:white;z-index:1000;flex-direction:column}
+    #cv-overlay.open{display:flex}
+    #cv-toolbar{background:#075E54;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
+    #cv-toolbar button{background:none;border:none;color:white;cursor:pointer;font-family:inherit;font-size:13px}
+    #cv-toolbar .back-btn{font-size:22px;line-height:1;padding:0 4px}
+    #cv-toolbar .title{font-size:15px;font-weight:600;flex:1;text-align:center}
+    #cv-toolbar .save-btn{background:#25D366;padding:7px 14px;border-radius:16px;font-weight:600;white-space:nowrap}
+    #cv-toolbar .save-btn:hover{background:#1ea855}
+    #cv-scroll{flex:1;overflow-y:auto;background:#f4f4f4}
+    #cv-rendered{background:white;max-width:800px;margin:16px auto;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+    #cv-footer{background:#f0f0f0;padding:12px 16px;text-align:center;flex-shrink:0;border-top:1px solid #ddd}
+    #cv-footer .save-main{background:#075E54;color:white;border:none;border-radius:8px;padding:13px 32px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;width:100%}
+    #cv-footer .save-main:hover{background:#054c44}
+    #cv-footer .print-hint{font-size:11px;color:#777;margin-top:8px;line-height:1.5}
+    @page{size:A4 portrait;margin:12mm 14mm}
+    @media print{
+      body>*{display:none!important}
+      #cv-overlay{display:block!important;position:static!important;overflow:visible!important;box-shadow:none}
+      #cv-toolbar,#cv-footer{display:none!important}
+      #cv-scroll{overflow:visible!important}
+      #cv-rendered{box-shadow:none!important;margin:0!important}
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="avatar">📄</div>
+    <div><h1 id="hdr-title">CV Builder</h1><p id="hdr-sub">Free · Professional · ATS-Ready</p></div>
+  </div>
+  <div class="prog-wrap"><div class="prog-bar" id="pbar"></div></div>
+  <div class="chat" id="chat"></div>
+  <div class="choices hidden" id="choices"></div>
+  <div class="input-row" id="input-row">
+    <textarea class="chat-input" id="inp" rows="1" placeholder="Type here…" onkeydown="onKey(event)"></textarea>
+    <button class="send-btn" onclick="send()">&#9658;</button>
+  </div>
+  <div id="cv-overlay">
+    <div id="cv-toolbar">
+      <button class="back-btn" onclick="closeCV()">&#8592;</button>
+      <span class="title" id="cv-toolbar-title">Your CV</span>
+      <button class="save-btn" onclick="savePDF()">💾 Save PDF</button>
+    </div>
+    <div id="cv-scroll"><div id="cv-rendered"></div></div>
+    <div id="cv-footer">
+      <button class="save-main" onclick="savePDF()">💾 Save as PDF</button>
+      <p class="print-hint" id="cv-footer-hint">In the print dialog → set destination to <strong>Save as PDF</strong><br>and uncheck <strong>Headers and footers</strong> for a clean result.</p>
+    </div>
+  </div>
+
+<script>
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+let lang=null, resolver=null, inputLive=false;
+const cv={
+  name:'',title:'',city:'',email:'',phone:'',linkedin:'',countryCode:'',
+  relocate:false,relocateWhere:'',consent:false,
+  yearsExp:'',jobs:[],
+  eduLevel:'',eduField:'',eduInst:'',eduYear:'',
+  skills:'',langs:''
+};
+
+/* ══════════════════════════════════════════════
+   STRINGS
+══════════════════════════════════════════════ */
+const T={
+  en:{
+    hTitle:'CV Builder', hSub:'Free · Professional · ATS-Ready',
+    ph:'Type your answer…', skip:'⏭ Skip', yes:'✅ Yes, add another', no:'➡️ No, continue',
+    w1:'👋 Hi! I\'m your **CV Building Assistant**.',
+    w2:'I\'ll ask you simple questions and turn your answers into a **polished, professional CV** — for free.',
+    w3:'Takes about **5–10 minutes**. Let\'s go! 🚀',
+    q_name:   '1 ▸ What is your **full name**?',
+    q_title:  '2 ▸ What is your **current or most recent job title**?\n(e.g. Chef, Sales Executive, Accountant, Driver)',
+    q_city:   '3 ▸ Which **city** are you based in?',
+    q_relocate:'➡️ Are you **willing to relocate** for the right job?',
+    q_relocate_where:'🌍 Where would you be **willing to relocate** to?\n(e.g. another city, the GCC, Europe, or "anywhere")',
+    relocateNote: where=>`Open to relocation${where?` — ${where}`:''}`,
+    q_email:  '4 ▸ What is your **email address**? (tap Skip if none)',
+    q_phone:  (code)=>`5 ▸ What is your **phone number**?${code?`\n(your country code is **${code}** — include it if not already)`:'\n(include country code, e.g. +966 5XXXXXXXX)'}`,
+    q_linkedin:'6 ▸ Do you have a **LinkedIn URL**? (tap Skip if not)',
+    q_yrs:    '7 ▸ How many **years of work experience** do you have in total?',
+    yrs:      ['Less than 1 year','1–3 years','3–7 years','7+ years'],
+    q_jco:    n=>`📌 **Job ${n}** — What is the **company name**?`,
+    q_jtl:    '      What was your **job title** there?',
+    q_jfr:    '      When did you **start**? (e.g. Jan 2021)',
+    q_jto:    '      When did you **leave**?\n      (type **Present** if still there)',
+    q_jdu:    '      What did you do there?\n      Write **2–4 tasks or achievements**, one per line.\n      (e.g. managed team / prepared food / handled sales)',
+    q_more:   'Want to add **another job**? (up to 3 total)',
+    q_edu:    '8 ▸ What is your **highest level of education**?',
+    edu:      ['No Formal Education','Primary School','High School','Diploma',"Bachelor's","Master's",'PhD','Other'],
+    eduSkipField: new Set(['No Formal Education','Primary School','High School']),
+    q_fld:    '      What was your **degree / field of study**?\n      (e.g. Business Admin, Culinary Arts, IT)',
+    q_ins:    '      Which **school / college / university**?',
+    q_yr:     '      What year did you **graduate** (or finish)?',
+    q_ski:    '9 ▸ List your **top skills** (comma-separated)\n      e.g. cooking, photography, driving, Microsoft Excel',
+    // Languages: handled by askLanguages()
+    q_ar:     '10 ▸ Do you speak **Arabic**?',
+    q_en:     'Do you speak **English**?',
+    q_ar_lvl: 'What is your **Arabic** level?',
+    q_en_lvl: 'What is your **English** level?',
+    q_other:  'Do you speak any **other language**?',
+    q_lang_name:'Which language?',
+    q_lang_lvl: lvl=>`What is your **${lvl}** level?`,
+    addLang:  '➕ Yes, add a language',
+    doneLang: '✅ Done',
+    yesNo:    ['Yes','No'],
+    langLevels:['Fluent','Intermediate','Basic'],
+    q_gen:    '✨ All done! Tap below — I\'ll **polish your CV** and make it professional.',
+    genBtn:   '✨ Generate Professional CV',
+    translating:'🌐 Translating & polishing everything into professional English… this may take a few seconds.',
+    consentMsg:'🔒 One last step — to generate your CV, please agree that we may **securely store your CV details** to improve this free service.',
+    consentLabel:'I agree to store my CV data.',
+    consentRequired:'⚠️ Please tick the box to agree before we generate your CV.',
+    privacyNote:email=>`ℹ️ **Privacy:** we store the details you enter to improve this free service, and never sell them. To access or delete your data, contact **${email}**.`,
+    previewTitle:'Your CV', savePDF:'💾 Save as PDF',
+    hint:     'In the print dialog → set destination to <strong>Save as PDF</strong><br>and uncheck <strong>Headers and footers</strong> for a clean result.',
+    back:     '✅ Your CV is ready! Tap to view or save it again.',
+    viewBtn:  '👁 View CV Again',
+    secSum:'Professional Summary',secExp:'Work Experience',secEdu:'Education',secSki:'Skills',secLng:'Languages',
+    err_empty:'Please type something to continue.',
+    err_email:'Please enter a valid email address.',
+    err_year: 'Please enter a valid year (e.g. 2021).',
+    sumTpl:(title,yrs,co,skills)=>{
+      const open=['Dedicated','Results-driven','Accomplished','Highly motivated','Detail-oriented','Versatile'];
+      const a=open[Math.floor(Math.random()*open.length)];
+      const comp=skills.length?` Core strengths include ${skills.slice(0,3).join(', ')}, paired with a proactive, solutions-focused mindset.`:' Combines practical skill with a proactive, solutions-focused mindset.';
+      return `${a} ${title} with ${yrs} of hands-on professional experience${co?`, most recently at ${co}`:''}, known for a strong work ethic and an unwavering commitment to quality.${comp} Consistently recognized for reliability, attention to detail, and the ability to thrive in fast-paced, team-oriented environments. Now seeking a challenging new role to apply this expertise, take on greater responsibility, and deliver meaningful, measurable impact.`;
+    },
+  },
+  ar:{
+    hTitle:'مساعد السيرة الذاتية', hSub:'مجاني · احترافي · جاهز لأنظمة التوظيف',
+    ph:'اكتب إجابتك هنا…', skip:'⏭ تخطي', yes:'✅ نعم، أضف وظيفة أخرى', no:'➡️ لا، تابع',
+    w1:'👋 أهلاً! أنا **مساعدك لبناء السيرة الذاتية**.',
+    w2:'سأطرح عليك أسئلة بسيطة وأحوّل إجاباتك إلى **سيرة ذاتية احترافية** — مجاناً تماماً.',
+    w3:'يستغرق الأمر **5–10 دقائق** فقط. هيا نبدأ! 🚀',
+    q_name:   '1 ▸ ما هو **اسمك الكامل**؟',
+    q_title:  '2 ▸ ما هو **مسمى وظيفتك** الحالية أو الأخيرة؟\n(مثال: طباخ، مدير مبيعات، محاسب، سائق)',
+    q_city:   '3 ▸ في أي **مدينة** تقيم؟',
+    q_relocate:'➡️ هل أنت **مستعد للانتقال** من أجل الوظيفة المناسبة؟',
+    q_relocate_where:'🌍 إلى أين أنت **مستعد للانتقال**؟\n(مثال: مدينة أخرى، دول الخليج، أوروبا، أو "أي مكان")',
+    relocateNote: where=>`مستعد للانتقال${where?` — ${where}`:''}`,
+    q_email:  '4 ▸ ما هو **بريدك الإلكتروني**؟ (اضغط تخطي إذا لم يكن لديك)',
+    q_phone:  (code)=>`5 ▸ ما هو **رقم هاتفك**؟${code?`\n(مفتاح دولتك هو **${code}** — أضفه إذا لم يكن موجوداً)`:'\n(أضف مفتاح الدولة، مثال: +966 5XXXXXXXX)'}`,
+    q_linkedin:'6 ▸ هل لديك **رابط LinkedIn**؟ (اضغط تخطي إذا لم يكن لديك)',
+    q_yrs:    '7 ▸ كم **سنة خبرة عمل** إجمالية لديك؟',
+    yrs:      ['أقل من سنة','من 1 إلى 3 سنوات','من 3 إلى 7 سنوات','أكثر من 7 سنوات'],
+    q_jco:    n=>`📌 **الوظيفة رقم ${n}** — ما اسم **الشركة**؟`,
+    q_jtl:    '      ما كان **مسمى وظيفتك** هناك؟',
+    q_jfr:    '      متى **بدأت**؟ (مثال: يناير 2021)',
+    q_jto:    '      متى **تركت**؟ (اكتب **حتى الآن** إذا لا تزال هناك)',
+    q_jdu:    '      ماذا كنت تفعل في هذه الوظيفة؟\n      اكتب **2–4 مهام أو إنجازات**، كل واحدة في سطر.',
+    q_more:   'هل تريد إضافة **وظيفة أخرى**؟ (بحد أقصى 3)',
+    q_edu:    '8 ▸ ما هو **أعلى مستوى تعليمي** حصلت عليه؟',
+    edu:      ['بدون تعليم رسمي','ابتدائي','الثانوية العامة','دبلوم','بكالوريوس','ماجستير','دكتوراه','أخرى'],
+    eduSkipField: new Set(['بدون تعليم رسمي','ابتدائي','الثانوية العامة']),
+    q_fld:    '      ما هو **التخصص أو الدرجة العلمية**؟\n      (مثال: إدارة أعمال، طهي، علوم حاسوب)',
+    q_ins:    '      في أي **مدرسة / كلية / جامعة**؟',
+    q_yr:     '      في أي **سنة أنهيت** دراستك؟',
+    q_ski:    '9 ▸ اذكر **مهاراتك** (افصلها بفاصلة)\n      مثال: طهي، تصوير، قيادة، Microsoft Excel',
+    q_ar:     '10 ▸ هل تتحدث **العربية**؟',
+    q_en:     'هل تتحدث **الإنجليزية**؟',
+    q_ar_lvl: 'ما مستوى **العربية** لديك؟',
+    q_en_lvl: 'ما مستوى **الإنجليزية** لديك؟',
+    q_other:  'هل تتحدث **لغة أخرى**؟',
+    q_lang_name:'اكتب اسم **اللغة**:',
+    q_lang_lvl: name=>`ما مستوى **${name}**؟`,
+    addLang:  '➕ نعم، أضف لغة',
+    doneLang: '✅ انتهيت',
+    yesNo:    ['نعم','لا'],
+    langLevels:['طليق','متوسط','مبتدئ'],
+    q_gen:    '✨ انتهينا! اضغط أدناه — سأُحسّن سيرتك الذاتية وأجعلها احترافية.',
+    genBtn:   '✨ إنشاء سيرة ذاتية احترافية',
+    translating:'🌐 جارٍ ترجمة وتحسين كل البيانات إلى الإنجليزية الاحترافية… قد يستغرق هذا بضع ثوانٍ.',
+    consentMsg:'🔒 خطوة أخيرة — لإنشاء سيرتك الذاتية، يرجى الموافقة على أننا قد **نحفظ بيانات سيرتك بشكل آمن** لتحسين هذه الخدمة المجانية.',
+    consentLabel:'أوافق على حفظ بيانات سيرتي الذاتية.',
+    consentRequired:'⚠️ يرجى وضع علامة في المربع للموافقة قبل إنشاء سيرتك الذاتية.',
+    privacyNote:email=>`ℹ️ **الخصوصية:** نحفظ البيانات التي تدخلها لتحسين هذه الخدمة المجانية، ولا نبيعها أبداً. للوصول إلى بياناتك أو حذفها، تواصل عبر **${email}**.`,
+    previewTitle:'سيرتك الذاتية', savePDF:'💾 حفظ كـ PDF',
+    hint:     'في نافذة الطباعة → اختر <strong>حفظ كـ PDF</strong> كوجهة<br>وأزل علامة <strong>الرأس والتذييل</strong> للحصول على نتيجة نظيفة.',
+    back:     '✅ سيرتك الذاتية جاهزة! اضغط لعرضها أو حفظها مجدداً.',
+    viewBtn:  '👁 عرض السيرة الذاتية مجدداً',
+    secSum:'الملخص المهني',secExp:'الخبرة العملية',secEdu:'التعليم',secSki:'المهارات',secLng:'اللغات',
+    err_empty:'الرجاء كتابة شيء للمتابعة.',
+    err_email:'الرجاء إدخال بريد إلكتروني صحيح.',
+    err_year: 'الرجاء إدخال سنة صحيحة (مثال: 2021).',
+    sumTpl:(title,yrs,co,skills)=>{
+      const open=['محترف متميز','خبير متمرس','محترف طموح','محترف موثوق'];
+      const a=open[Math.floor(Math.random()*open.length)];
+      const comp=skills.length?` تشمل نقاط قوتي الأساسية: ${skills.slice(0,3).join('، ')}، إلى جانب عقلية استباقية تركّز على إيجاد الحلول.`:' أجمع بين المهارة العملية والعقلية الاستباقية في إيجاد الحلول.';
+      return `${a} في مجال ${title} بخبرة عملية ${yrs}${co?`، آخرها في ${co}`:''}، معروف بأخلاقيات عمل قوية والتزام راسخ بالجودة.${comp} أحظى بتقدير دائم لموثوقيتي ودقتي وقدرتي على التميّز في بيئات العمل السريعة القائمة على روح الفريق. أتطلع الآن إلى فرصة مهنية جديدة أطبّق فيها خبرتي وأتحمّل مسؤوليات أكبر وأحقّق أثراً ملموساً وقابلاً للقياس.`;
+    },
+  }
+};
+const s=()=>T[lang||'en'];
+
+/* ══════════════════════════════════════════════
+   COUNTRY CODE DETECTION  (fix #5)
+══════════════════════════════════════════════ */
+const CITY_CODES={
+  // Saudi Arabia
+  riyadh:'+966',jeddah:'+966',mecca:'+966',medina:'+966',dammam:'+966',khobar:'+966',jubail:'+966',taif:'+966',abha:'+966',tabuk:'+966',hail:'+966',
+  // UAE
+  dubai:'+971','abu dhabi':'+971',sharjah:'+971',ajman:'+971',fujairah:'+971','ras al khaimah':'+971',
+  // Kuwait
+  kuwait:'+965','kuwait city':'+965',
+  // Qatar
+  doha:'+974',
+  // Bahrain
+  manama:'+973',
+  // Oman
+  muscat:'+968',salalah:'+968',
+  // Jordan
+  amman:'+962',
+  // Lebanon
+  beirut:'+961',
+  // Egypt
+  cairo:'+20',alexandria:'+20',giza:'+20',
+  // Morocco
+  casablanca:'+212',rabat:'+212',marrakech:'+212',fez:'+212',
+  // Tunisia
+  tunis:'+216',
+  // Iraq
+  baghdad:'+964',erbil:'+964',
+  // Libya
+  tripoli:'+218',benghazi:'+218',
+  // Algeria
+  algiers:'+213',
+  // Sudan
+  khartoum:'+249',
+  // Pakistan
+  karachi:'+92',lahore:'+92',islamabad:'+92',rawalpindi:'+92',
+  // India
+  mumbai:'+91',delhi:'+91','new delhi':'+91',bangalore:'+91',hyderabad:'+91',chennai:'+91',
+  // Bangladesh
+  dhaka:'+880',chittagong:'+880',
+  // Philippines
+  manila:'+63',cebu:'+63',
+  // Indonesia
+  jakarta:'+62',
+  // Ethiopia
+  'addis ababa':'+251',
+  // Nigeria
+  lagos:'+234',abuja:'+234',
+  // Kenya
+  nairobi:'+254',
+  // UK
+  london:'+44',manchester:'+44',birmingham:'+44',
+  // USA
+  'new york':'+1','los angeles':'+1',houston:'+1',chicago:'+1',
+  // Turkey
+  istanbul:'+90',ankara:'+90',
+};
+function detectCode(city){return CITY_CODES[city.toLowerCase().trim()]||null;}
+function fmtPhone(p,code){
+  if(!p)return'';
+  const t=p.trim();
+  if(t.startsWith('+'))return t;
+  if(!code)return t;
+  const d=t.startsWith('0')?t.slice(1):t;
+  return `${code} ${d}`;
+}
+
+/* ══════════════════════════════════════════════
+   TRANSLATION  → final content is always English
+══════════════════════════════════════════════ */
+function hasArabic(t){return /[؀-ۿ]/.test(t||'');}
+// Persistent translation cache — avoids repeat API calls across builds and sessions
+const TR_CACHE=(()=>{try{return JSON.parse(localStorage.getItem('cvb_tr')||'{}');}catch(e){return{};}})();
+function trCacheSave(){try{localStorage.setItem('cvb_tr',JSON.stringify(TR_CACHE));}catch(e){}}
+async function translateToEn(text){
+  if(!text||!hasArabic(text))return text;          // already English / no Arabic → no network
+  const q=text.trim();
+  if(TR_CACHE[q]!==undefined)return TR_CACHE[q];    // cache hit → no network
+  let out=null;
+  // 1) Google (unofficial) — best quality
+  try{
+    const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=en&dt=t&q='+encodeURIComponent(q));
+    if(r.ok){
+      const data=await r.json();
+      if(Array.isArray(data)&&Array.isArray(data[0])){
+        const g=data[0].map(seg=>seg&&seg[0]?seg[0]:'').join('').trim();
+        if(g)out=g;
+      }
+    }
+  }catch(e){}
+  // 2) MyMemory — CORS-friendly fallback
+  if(!out){
+    try{
+      const r=await fetch('https://api.mymemory.translated.net/get?langpair=ar|en&q='+encodeURIComponent(q));
+      if(r.ok){
+        const data=await r.json();
+        const m=data&&data.responseData&&data.responseData.translatedText;
+        if(m&&m.trim()&&!/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(m))out=m.trim();
+      }
+    }catch(e){}
+  }
+  if(out){TR_CACHE[q]=out;trCacheSave();return out;}// cache only successful translations
+  return text;                                      // both failed → keep original gracefully
+}
+// Translate every user-typed free-text field into English before rendering
+async function translateCV(){
+  cv.name=await translateToEn(cv.name);
+  cv.title=await translateToEn(cv.title);
+  cv.city=await translateToEn(cv.city);
+  if(cv.relocateWhere)cv.relocateWhere=await translateToEn(cv.relocateWhere);
+  cv.skills=await translateToEn(cv.skills);
+  cv.eduField=await translateToEn(cv.eduField);
+  cv.eduInst=await translateToEn(cv.eduInst);
+  for(const j of cv.jobs){
+    j.company=await translateToEn(j.company);
+    j.title=await translateToEn(j.title);
+    j.from=await translateToEn(j.from);
+    j.to=await translateToEn(j.to);
+    const out=[];
+    for(const d of j.duties)out.push(await translateToEn(d));
+    j.duties=out;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   DATABASE  → store submissions in Supabase
+   (publishable/anon key: INSERT-only via RLS — cannot read others' rows)
+══════════════════════════════════════════════ */
+const SUPA_URL='https://wlxidarktzpistgpawnr.supabase.co';
+const SUPA_KEY='sb_publishable_3V7DoYDnsmbkNv-DTdo2uw_MSb7OvzE';
+const PRIVACY_EMAIL='info@carmyne.ae';               // contact for data access / deletion requests
+async function saveSubmission(){
+  if(!cv.consent)return;                            // only store if the user agreed
+  try{
+    await fetch(SUPA_URL+'/rest/v1/submissions',{
+      method:'POST',
+      headers:{
+        'apikey':SUPA_KEY,
+        'Authorization':'Bearer '+SUPA_KEY,
+        'Content-Type':'application/json',
+        'Prefer':'return=minimal'
+      },
+      body:JSON.stringify({
+        name:cv.name,title:cv.title,city:cv.city,email:cv.email,
+        phone:fmtPhone(cv.phone,cv.countryCode),linkedin:cv.linkedin,
+        years_exp:cv.yearsExp,relocate:!!cv.relocate,relocate_where:cv.relocateWhere,
+        edu_level:cv.eduLevel,skills:cv.skills,langs:cv.langs,
+        input_lang:lang,consent:true,payload:cv,user_agent:navigator.userAgent
+      })
+    });
+  }catch(e){/* never block CV generation if the save fails */}
+}
+
+/* ══════════════════════════════════════════════
+   TEXT ENHANCEMENT ENGINE  (fix #1)
+══════════════════════════════════════════════ */
+function tCase(str){
+  const m=new Set(['a','an','the','and','but','or','for','nor','at','to','by','in','of','as']);
+  return str.toLowerCase().split(/\s+/).map((w,i)=>(!m.has(w)||i===0)?w.charAt(0).toUpperCase()+w.slice(1):w).join(' ');
+}
+
+/* Acronyms / initialisms that should keep a fixed casing (e.g. Ceo → CEO) */
+const ACRO={
+  ceo:'CEO',cto:'CTO',cfo:'CFO',coo:'COO',cmo:'CMO',cio:'CIO',chro:'CHRO',
+  hr:'HR',it:'IT',pr:'PR',qa:'QA',qc:'QC',ux:'UX',ui:'UI',
+  api:'API',sql:'SQL',html:'HTML',css:'CSS',js:'JS',php:'PHP',aws:'AWS',sap:'SAP',erp:'ERP',crm:'CRM',cms:'CMS',
+  kpi:'KPI',kpis:'KPIs',roi:'ROI',b2b:'B2B',b2c:'B2C',vip:'VIP',pos:'POS',hvac:'HVAC',cdl:'CDL',cpr:'CPR',
+  hse:'HSE',osha:'OSHA',iso:'ISO',vat:'VAT',ngo:'NGO',un:'UN',eu:'EU',uae:'UAE',uk:'UK',usa:'USA',ksa:'KSA',gcc:'GCC',
+  seo:'SEO',sem:'SEM',smm:'SMM',pdf:'PDF',atm:'ATM',gps:'GPS',cctv:'CCTV','3d':'3D','2d':'2D',
+  rn:'RN',lpn:'LPN',cpa:'CPA',acca:'ACCA',cma:'CMA',pmp:'PMP',mba:'MBA',phd:'PhD',msc:'MSc',bsc:'BSc',
+  ielts:'IELTS',toefl:'TOEFL',ibm:'IBM',kfc:'KFC',stc:'STC',hsbc:'HSBC',saudia:'SAUDIA'
+};
+function fixAcr(str){
+  if(!str)return str;
+  return str.replace(/[A-Za-z0-9]+/g,w=>ACRO[w.toLowerCase()]||w);
+}
+
+const SPELL={
+  // Common typos
+  schedueel:'schedule',scheduel:'schedule',schdule:'schedule',schedulee:'schedule',
+  vegetabels:'vegetables',vegetabl:'vegetables',vegatable:'vegetables',
+  managment:'management',managemnt:'management',
+  preperation:'preparation',prepration:'preparation',
+  custmer:'customer',custommer:'customer',
+  bangladehs:'Bangladesh',bangaldesh:'Bangladesh',bangladash:'Bangladesh',
+  'uni of bangladehs':'University of Dhaka',
+  teste:'taste',tasete:'taste',
+  qualtiy:'quality',qualiy:'quality',
+  cleannes:'cleanliness',cleanlnes:'cleanliness',
+  recieve:'receive',recive:'receive',
+  comunication:'communication',enviroment:'environment',
+  manger:'manager',managr:'manager',
+  supervison:'supervision',costumer:'customer',
+  employes:'employees',employess:'employees',
+  responsibilty:'responsibility',
+  // Media/photography specific
+  phitigraphy:'Photography',photigraphy:'Photography',
+  photographi:'Photography',photograpy:'Photography',
+  phitography:'Photography',videograpy:'Videography',
+  videografi:'Videography',videografy:'Videography',
+  canera:'Camera',cammera:'Camera',camra:'Camera',
+  liting:'Lighting',ligting:'Lighting',
+  edditing:'Editing',editting:'Editing',
+  driector:'Director',directore:'Director',
+  prodution:'Production',producton:'Production',
+  // General
+  highschool:'High School','high scool':'High School',
+  acounting:'Accounting',acoounting:'Accounting',
+  recptionist:'Receptionist',receptonist:'Receptionist',
+  maintanance:'Maintenance',maintenence:'Maintenance',
+  warhouse:'Warehouse',warehose:'Warehouse',
+  mecanic:'Mechanic',mechanik:'Mechanic',
+  electritian:'Electrician',electrican:'Electrician',
+  plumming:'Plumbing',pluming:'Plumbing',
+};
+function fixSpell(str){
+  let r=str;
+  const keys=Object.keys(SPELL).sort((a,b)=>b.length-a.length);
+  for(const k of keys){
+    r=r.replace(new RegExp('\\b'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','gi'),m=>{
+      const v=SPELL[k];
+      if(m===m.toUpperCase())return v.toUpperCase();
+      if(m[0]===m[0].toUpperCase())return v.charAt(0).toUpperCase()+v.slice(1);
+      return v;
+    });
+  }
+  return r;
+}
+
+function cleanTitle(raw){
+  if(!raw)return raw;
+  let t=raw
+    .replace(/\bm3allim\b|\bmo3allim\b|\bmu3allim\b|\bmuallim\b/gi,'Head Chef')
+    .replace(/\bsha3?warma\b/gi,'Shawarma')
+    .replace(/\bkeb[ae]b\b/gi,'Kebab')
+    .replace(/\busta2?\b|\busta\b/gi,'Senior')
+    .replace(/\bra2?[ei]s\b|\brayes\b/gi,'Head')
+    .replace(/\bmudeer\b|\bmudir\b/gi,'Manager')
+    .replace(/\bmus[ah]a3?id\b/gi,'Assistant')
+    .replace(/\bsawaa2?\b|\bsawa2\b/gi,'Driver')
+    .replace(/\bof phitigraphy\b|\bof photigraphy\b|\bof photographi\b/gi,'of Photography');
+  return fixAcr(tCase(fixSpell(t.trim())));
+}
+
+function cleanCompany(r){return r?fixAcr(tCase(fixSpell(r.trim()))):r;}
+
+// Duty → professional bullet
+const DUTY_MAP=[
+  [/\bpre.?product/i,      'Managed comprehensive pre-production planning, including detailed script breakdowns, shooting schedules, and resource coordination, ensuring every shoot launched on time and stayed within the allocated budget'],
+  [/\bcamer[a]?\s*(and)?\s*light/i,'Set up, calibrated, and operated professional camera and lighting equipment across a range of environments, consistently achieving optimal visual composition, exposure, and high-quality results'],
+  [/\blight.*setup\b/i,    'Designed and managed complex lighting setups for both studio and on-location shoots, ensuring optimal visual quality and a consistent aesthetic across all productions'],
+  [/\bteam\s*leader?ship\b/i,'Led and coordinated the full production crew, delegating tasks, maintaining clear communication, and consistently delivering projects on schedule and to client specifications'],
+  [/\bcoordinat.*director|coordinat.*producer/i,'Collaborated closely with directors and producers to translate the creative vision into precise technical execution, contributing ideas that elevated the quality of the final product'],
+  [/\bcoordinat.*team\b/i, 'Coordinated cross-functional team activities and daily workflows, aligning schedules and responsibilities to keep every project on track and meet key milestones'],
+  [/\bfilm(ing|ed)?\b/i,   'Filmed high-quality footage for commercial and creative productions, operating professional equipment while adhering closely to brand guidelines and client requirements'],
+  [/\bphoto(graph|shoot)/i,'Planned and executed professional photography shoots from start to finish, managing composition, lighting, and post-production to consistently deliver polished, client-ready images'],
+  [/\bedit(ing|ed)?\b/i,   'Edited video and photo content using industry-standard software such as Adobe Premiere Pro and Photoshop, transforming raw material into polished, engaging final deliverables'],
+  [/\bdrone\b/i,           'Operated drone equipment to capture striking aerial photography and videography, ensuring full compliance with local safety and airspace regulations'],
+  [/\bcook(ing|ed)?\b/i,   'Prepared and cooked a wide range of dishes to order, following standardized recipes and strict food-hygiene protocols while maintaining consistent taste, quality, and presentation'],
+  [/\bclean(ing|ed)?\b/i,  'Maintained rigorous cleanliness and sanitation standards across all kitchen and work-station areas, ensuring full compliance with health and safety regulations'],
+  [/\bwrit.*schedu/i,       'Developed and managed staff work schedules and shift rotations, balancing workload and coverage to maximize operational efficiency and overall team productivity'],
+  [/\bmanag.*team\b/i,     'Supervised, mentored, and led team members, coordinating daily tasks and maintaining high performance and quality standards across the team'],
+  [/\bmanag.*staff\b/i,    'Supervised, mentored, and led staff members, coordinating daily responsibilities while upholding strong performance and service standards'],
+  [/\bcut\s*veg/i,         'Performed precise vegetable preparation and mise en place to exacting kitchen standards, ensuring all ingredients were ready for efficient, high-volume service'],
+  [/\btast[e]?\s*food|test[e]?\s*food/i,'Conducted routine food-quality inspections, carefully evaluating taste, presentation, and consistency to guarantee every dish met the establishment\'s standards'],
+  [/\btrain.*staff|train.*new/i,'Trained and onboarded new team members on standard operating procedures, safety practices, and service standards, accelerating their integration into the team'],
+  [/\bstock(ing|ed)?\b/i,  'Monitored and managed inventory levels, conducting regular stock counts and coordinating with suppliers to prevent shortages and minimize waste'],
+  [/\bcustomer\s*service/i,'Delivered attentive, professional customer service, promptly resolving inquiries and complaints to ensure a consistently positive customer experience'],
+  [/\bserv.*customer/i,    'Served customers efficiently and courteously, anticipating their needs to create a welcoming, memorable, and repeat-worthy experience'],
+  [/\bcash(ier)?\b/i,      'Processed customer transactions accurately using POS systems, handled cash and card payments, and reconciled the till at the end of each shift with zero discrepancies'],
+  [/\bsal(e|es|ing)\b/i,   'Consistently achieved and exceeded sales targets through proactive customer engagement, strong product knowledge, and effective upselling techniques'],
+  [/\bdata\s*entr/i,       'Accurately entered, updated, and maintained large volumes of records in database systems, safeguarding data integrity through meticulous attention to detail'],
+  [/\bdeliver(y|ing)?\b/i, 'Managed timely and accurate delivery operations, planning efficient routes and maintaining high customer-satisfaction levels across all assignments'],
+  [/\bdriv(e|ing|er)\b/i,  'Operated company vehicles safely and efficiently, adhering to traffic regulations and delivery schedules while keeping the vehicle in excellent working condition'],
+  [/\breport(s|ing)?\b/i,  'Prepared and submitted detailed operational reports to management on a regular basis, providing accurate data and insights to support informed decision-making'],
+  [/\bsuper?vis(e|ing|ed)?\b/i,'Supervised daily operations and staff performance, monitoring key metrics and ensuring consistent adherence to company standards and quality benchmarks'],
+  [/\baccount(ing|s)?\b/i, 'Managed financial accounts and ledgers, reconciled records, and ensured the accuracy and compliance of all financial transactions and reporting'],
+  [/\bbook.?keep/i,        'Maintained accurate bookkeeping records, processed invoices and payments, and supported smooth, timely month-end financial close processes'],
+  [/\brecept/i,            'Managed front-desk operations, warmly welcomed visitors, handled incoming calls, and coordinated appointment scheduling with professionalism and efficiency'],
+  [/\bsecretar/i,          'Provided comprehensive administrative support, including correspondence, document filing, calendar management, and the coordination of meetings and travel arrangements'],
+  [/\bmarket(ing|ed)?\b/i, 'Developed and executed targeted marketing campaigns across multiple channels, increasing brand awareness and driving measurable customer acquisition'],
+  [/\bsocial\s*media\b/i,  'Managed social-media channels end to end, creating engaging content, scheduling posts, and growing online community engagement and audience reach'],
+  [/\bpurchas(e|ing)\b/i,  'Managed end-to-end procurement processes, sourcing reliable suppliers and negotiating contracts to secure cost-effective, high-quality purchasing decisions'],
+  [/\bmaintain(ed|ing)?\b/i,'Performed regular preventive maintenance and inspections, promptly identifying and resolving issues to keep equipment and facilities operating at peak condition'],
+  [/\binstall(ed|ing)?\b/i,'Installed, configured, and tested systems and equipment in line with technical specifications and safety standards, ensuring reliable, long-term performance'],
+  [/\brepair(ed|ing|s)?\b/i,'Diagnosed and repaired technical faults quickly and effectively, minimizing downtime and maintaining continuous, reliable operations'],
+];
+
+/* Generic expander — makes ANY typed duty detailed, even with no keyword match */
+function capFirst(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
+function hashStr(s){let h=0;for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))|0;}return Math.abs(h);}
+const PAST_IRR={make:'made',take:'took',drive:'drove',keep:'kept',sell:'sold',build:'built',lead:'led',run:'ran',do:'did',write:'wrote',send:'sent',deal:'dealt',meet:'met',hold:'held',pay:'paid',read:'read',leave:'left',speak:'spoke',oversee:'oversaw',draw:'drew',grow:'grew',win:'won',cost:'cost',hit:'hit',set:'set',cut:'cut',put:'put',get:'got',give:'gave',teach:'taught',buy:'bought',bring:'brought',find:'found',sweep:'swept',mean:'meant',wear:'wore',
+  plan:'planned',stop:'stopped',ship:'shipped',chop:'chopped',mop:'mopped',scrub:'scrubbed',wrap:'wrapped',log:'logged',tag:'tagged',map:'mapped',grab:'grabbed',plot:'plotted',fit:'fitted'};
+const BASE_VERBS=new Set('manage handle prepare cook clean serve sell drive deliver answer help assist organize arrange schedule train supervise lead coordinate maintain repair install build create design write edit film shoot photograph operate monitor track record enter process calculate count stock order purchase negotiate plan develop execute support resolve respond greet welcome check inspect test taste cut chop wash package load unload transport collect distribute file type print scan update review audit reconcile teach mentor guide run oversee direct control set fix replace paint weld wire bake grill fry mix measure weigh pack make take keep send meet hold pay clean cover lift carry stack sort label pack ring scan stamp sign draft compile gather'.split(' '));
+const DUTY_GENERIC_VERBS=['Handled','Managed','Oversaw','Coordinated','Carried out'];
+const DUTY_SUFFIX=[
+  'ensuring consistent quality and full adherence to company standards',
+  'maintaining a high level of accuracy, efficiency, and professionalism throughout',
+  'contributing to smooth daily operations and the overall success of the team',
+  'consistently meeting deadlines while exceeding performance expectations',
+  'helping to maintain a positive, productive, and well-organized work environment',
+  'delivering reliable results with strong attention to detail and care',
+];
+function pastTense(w){
+  const lw=w.toLowerCase().replace(/[^a-z]/g,'');
+  if(PAST_IRR[lw])return PAST_IRR[lw];
+  if(/(ed|ing)$/.test(lw))return lw;
+  if(/e$/.test(lw))return lw+'d';
+  if(/[^aeiou]y$/.test(lw))return lw.slice(0,-1)+'ied';
+  return lw+'ed';
+}
+function genericDuty(raw){
+  // Non-English (e.g. Arabic) free text can't be translated offline — keep it as typed
+  if(/[؀-ۿ]/.test(raw))return raw.trim().replace(/^[\-•*\s]+/,'').replace(/[.,؛\s]+$/,'');
+  let t=fixSpell(raw.trim()).replace(/^[\-•*\s]+/,'').replace(/[.;,\s]+$/,'');
+  if(!t)return'';
+  const words=t.split(/\s+/);
+  if(words.length>=12)return capFirst(t);            // already a full, detailed line
+  const suf=DUTY_SUFFIX[hashStr(t)%DUTY_SUFFIX.length];
+  const first=words[0].toLowerCase().replace(/[^a-z]/g,'');
+  const rest=words.slice(1).join(' ');
+  let body;
+  if(BASE_VERBS.has(first)||/(ed|ing)$/.test(first)){
+    body=capFirst(pastTense(words[0]))+(rest?' '+rest:'');
+  }else{
+    body=`${DUTY_GENERIC_VERBS[hashStr(t)%DUTY_GENERIC_VERBS.length]} ${t}`;
+  }
+  return `${body}, ${suf}`;
+}
+function enhanceDuty(raw){
+  if(!raw)return'';
+  const fixed=fixSpell(raw.trim());
+  for(const[pat,exp]of DUTY_MAP){
+    if(pat.test(fixed)||pat.test(raw))return exp;
+  }
+  return genericDuty(raw);                            // fallback now expands too
+}
+
+const SKILL_MAP={
+  'cook':'Food Preparation & Cooking','cooking':'Food Preparation & Cooking',
+  'clean':'Kitchen Sanitation & Hygiene','cleaning':'Kitchen Sanitation & Hygiene',
+  'cut vegetables':'Knife Skills & Mise en Place','cut vegetabels':'Knife Skills & Mise en Place',
+  'taste food':'Food Quality Control','teste food':'Food Quality Control',
+  'manage team':'Team Leadership & Supervision',
+  'driving':'Driving (Valid License)','drive':'Driving (Valid License)',
+  'computer':'Computer Proficiency',
+  'ms office':'Microsoft Office Suite','microsoft office':'Microsoft Office Suite',
+  'ms word':'Microsoft Word','ms excel':'Microsoft Excel',
+  'excel':'Microsoft Excel','word':'Microsoft Word','powerpoint':'Microsoft PowerPoint',
+  'data entry':'Data Entry & Record Keeping',
+  'customer service':'Customer Service','time management':'Time Management',
+  'communication':'Communication Skills','teamwork':'Teamwork & Collaboration',
+  'problem solving':'Problem-Solving','leadership':'Team Leadership',
+  'typing':'Touch Typing','filing':'Document Management',
+  'scheduling':'Scheduling & Planning','inventory':'Inventory Management',
+  'cash handling':'Cash Handling & POS','training':'Staff Training & Development',
+  'sales':'Sales & Client Relations','marketing':'Marketing & Promotion',
+  'social media':'Social Media Management',
+  'photography':'Photography','filming':'Videography & Filming',
+  'videography':'Videography & Filming','editing':'Video & Photo Editing',
+  'photo editing':'Photo Editing','video editing':'Video Editing',
+  'lightroom':'Adobe Lightroom','premiere':'Adobe Premiere Pro',
+  'after effects':'Adobe After Effects','photoshop':'Adobe Photoshop',
+  'drone':'Drone Operation','aerial photography':'Aerial Photography',
+  'lighting':'Lighting & Studio Setup',
+};
+function enhanceSkill(raw){
+  if(!raw)return'';
+  const key=fixSpell(raw).toLowerCase().trim();
+  if(SKILL_MAP[key])return SKILL_MAP[key];
+  for(const[k,v]of Object.entries(SKILL_MAP)){if(key.includes(k))return v;}
+  return fixAcr(tCase(fixSpell(raw.trim())));
+}
+
+function pdfFilename(name){
+  return name.trim().split(/\s+/).map(p=>p.charAt(0).toUpperCase()+p.slice(1).toLowerCase()).join('_')+'_CV';
+}
+
+/* ══════════════════════════════════════════════
+   DOM HELPERS
+══════════════════════════════════════════════ */
+const chatEl=()=>document.getElementById('chat');
+const inpEl=()=>document.getElementById('inp');
+const choicesEl=()=>document.getElementById('choices');
+const inputRow=()=>document.getElementById('input-row');
+function setProgress(p){document.getElementById('pbar').style.width=Math.min(100,p)+'%';}
+function scrollDown(){const c=chatEl();c.scrollTop=c.scrollHeight;}
+function fmt(t){return t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');}
+
+function botSay(text,fast){
+  return new Promise(resolve=>{
+    const typing=document.createElement('div');
+    typing.className='bubble bubble-bot';
+    typing.innerHTML='<div class="dots"><span></span><span></span><span></span></div>';
+    chatEl().appendChild(typing);scrollDown();
+    const d=fast?250:Math.min(1400,350+text.replace(/<[^>]+>/g,'').length*14);
+    setTimeout(()=>{
+      typing.remove();
+      const b=document.createElement('div');
+      b.className='bubble bubble-bot';b.innerHTML=fmt(text);
+      chatEl().appendChild(b);scrollDown();resolve();
+    },d);
+  });
+}
+function userSay(text){
+  const b=document.createElement('div');b.className='bubble bubble-user';b.textContent=text;
+  chatEl().appendChild(b);scrollDown();
+}
+// Live loading bubble with a spinner; returns the element so the caller can remove it
+function showLoader(text){
+  const b=document.createElement('div');b.className='bubble bubble-bot';
+  b.style.display='flex';b.style.alignItems='center';b.style.gap='9px';
+  b.innerHTML='<span class="spin"></span><span>'+fmt(text)+'</span>';
+  chatEl().appendChild(b);scrollDown();
+  return b;
+}
+
+/* ══════════════════════════════════════════════
+   INPUT
+══════════════════════════════════════════════ */
+function ask(opts={}){
+  return new Promise(resolve=>{
+    choicesEl().innerHTML='';
+    if(opts.choices){
+      inputRow().classList.add('hidden');
+      choicesEl().classList.remove('hidden');
+      opts.choices.forEach(c=>{
+        const btn=document.createElement('button');
+        btn.className='choice-btn';btn.textContent=c;
+        btn.onclick=()=>{choicesEl().classList.add('hidden');inputRow().classList.remove('hidden');userSay(c);resolve(c);};
+        choicesEl().appendChild(btn);
+      });
+    } else {
+      inpEl().rows=opts.multiline?4:1;
+      inpEl().placeholder=s().ph;
+      if(opts.optional){
+        choicesEl().classList.remove('hidden');
+        const skip=document.createElement('button');skip.className='choice-btn';skip.textContent=s().skip;
+        skip.onclick=()=>{choicesEl().classList.add('hidden');userSay('—');resolver=null;inputLive=false;resolve('');};
+        choicesEl().appendChild(skip);
+      } else{choicesEl().classList.add('hidden');}
+      inputRow().classList.remove('hidden');inpEl().focus();
+      resolver=async val=>{
+        if(!val&&!opts.optional){await botSay(s().err_empty,true);inpEl().focus();return;}
+        if(opts.validate&&val){const e=opts.validate(val);if(e){await botSay(e,true);inpEl().focus();return;}}
+        choicesEl().classList.add('hidden');inpEl().rows=1;
+        userSay(val||'—');resolver=null;inputLive=false;resolve(val||'');
+      };
+      inputLive=true;
+    }
+  });
+}
+function send(){
+  const val=inpEl().value.trim();inpEl().value='';
+  if(inputLive&&resolver)resolver(val);
+}
+function onKey(e){
+  if(e.key==='Enter'&&!e.shiftKey&&inpEl().rows===1){e.preventDefault();send();}
+}
+
+/* ══════════════════════════════════════════════
+   LANGUAGE FLOW  (fix #6)
+══════════════════════════════════════════════ */
+async function askLanguages(){
+  const lvls=s().langLevels;
+  // Map a chosen level (in any UI language) back to its English label for output
+  const enLvl=l=>{const i=lvls.indexOf(l);return i>=0?T.en.langLevels[i]:l;};
+  const result=[];
+
+  // Arabic
+  await botSay(s().q_ar);
+  const hasAr=await ask({choices:s().yesNo});
+  if(hasAr===s().yesNo[0]){
+    await botSay(s().q_ar_lvl);
+    const lvl=await ask({choices:lvls});
+    result.push(`Arabic – ${enLvl(lvl)}`);
+  }
+
+  // English
+  await botSay(s().q_en);
+  const hasEn=await ask({choices:s().yesNo});
+  if(hasEn===s().yesNo[0]){
+    await botSay(s().q_en_lvl);
+    const lvl=await ask({choices:lvls});
+    result.push(`English – ${enLvl(lvl)}`);
+  }
+
+  // Other languages (loop)
+  let more=true;
+  while(more){
+    await botSay(s().q_other);
+    const ans=await ask({choices:[s().addLang,s().doneLang]});
+    if(ans===s().doneLang){more=false;}
+    else{
+      await botSay(s().q_lang_name);
+      const lname=await ask();
+      await botSay(s().q_lang_lvl(tCase(lname)));
+      const lvl=await ask({choices:lvls});
+      const enName=tCase(await translateToEn(lname));
+      result.push(`${enName} – ${enLvl(lvl)}`);
+    }
+  }
+
+  return result.join(',  ');
+}
+
+/* ══════════════════════════════════════════════
+   MAIN FLOW
+══════════════════════════════════════════════ */
+async function run(){
+  inputRow().classList.add('hidden');
+  await botSay('👋 Welcome! | أهلاً وسهلاً',true);
+  const pick=await ask({choices:['🇬🇧 English','🇦🇪 عربي']});
+  lang=pick.includes('عربي')?'ar':'en';
+  if(lang==='ar'){document.body.classList.add('rtl');document.documentElement.setAttribute('dir','rtl');document.documentElement.setAttribute('lang','ar');}
+  document.getElementById('hdr-title').textContent=s().hTitle;
+  document.getElementById('hdr-sub').textContent=s().hSub;
+
+  await botSay(s().w1);await botSay(s().w2);await botSay(s().w3);
+
+  setProgress(5);  await botSay(s().q_name);  cv.name=await ask();
+  setProgress(10); await botSay(s().q_title); cv.title=await ask();
+  setProgress(15); await botSay(s().q_city);  cv.city=await ask();
+  cv.city=await translateToEn(cv.city);          // translate now so country code can be detected
+  cv.countryCode=detectCode(cv.city);
+
+  // Relocation — ask, and if yes ask where
+  await botSay(s().q_relocate);
+  const reloc=await ask({choices:s().yesNo});
+  if(reloc===s().yesNo[0]){
+    cv.relocate=true;
+    await botSay(s().q_relocate_where);
+    cv.relocateWhere=await ask();
+  } else {
+    cv.relocate=false;cv.relocateWhere='';
+  }
+
+  // Email — optional (fix #2)
+  setProgress(20); await botSay(s().q_email);
+  cv.email=await ask({optional:true,validate:v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':s().err_email});
+
+  // Phone with country code hint (fix #5)
+  setProgress(25); await botSay(s().q_phone(cv.countryCode));
+  cv.phone=await ask();
+
+  setProgress(30); await botSay(s().q_linkedin); cv.linkedin=await ask({optional:true});
+
+  setProgress(35); await botSay(s().q_yrs);
+  cv.yearsExp=await ask({choices:s().yrs});
+
+  let jobCount=0,addMore=true;
+  while(addMore&&jobCount<3){
+    jobCount++;setProgress(35+jobCount*7);
+    await botSay(s().q_jco(jobCount)); const jco=await ask();
+    await botSay(s().q_jtl);          const jtl=await ask();
+    await botSay(s().q_jfr);          const jfr=await ask();
+    await botSay(s().q_jto);          const jto=await ask();
+    await botSay(s().q_jdu);
+    const raw=await ask({multiline:true});
+    const duties=raw.split(/\n|,/).map(d=>d.trim()).filter(Boolean);
+    cv.jobs.push({company:jco,title:jtl,from:jfr,to:jto,duties});
+    if(jobCount<3){await botSay(s().q_more);const ans=await ask({choices:[s().yes,s().no]});addMore=(ans===s().yes);}
+    else addMore=false;
+  }
+
+  // Education — new options + skip field if ≤ High School  (fix #3 & #4)
+  setProgress(62); await botSay(s().q_edu);
+  cv.eduLevel=await ask({choices:s().edu});
+
+  const skipField=s().eduSkipField.has(cv.eduLevel);
+  if(!skipField){
+    setProgress(66); await botSay(s().q_fld); cv.eduField=await ask();
+  } else {
+    cv.eduField='';
+  }
+  setProgress(70); await botSay(s().q_ins); cv.eduInst=await ask();
+  setProgress(74); await botSay(s().q_yr);
+  cv.eduYear=await ask({validate:v=>/^\d{4}$/.test(v)?'':s().err_year});
+
+  setProgress(80); await botSay(s().q_ski); cv.skills=await ask();
+
+  // Language buttons (fix #6)
+  setProgress(87); cv.langs=await askLanguages();
+
+  setProgress(95);inputRow().classList.add('hidden');await botSay(s().q_gen);
+  await botSay(s().consentMsg);
+  await botSay(s().privacyNote(PRIVACY_EMAIL));
+  choicesEl().innerHTML='';choicesEl().classList.remove('hidden');
+
+  // Optional consent checkbox — storage happens only if ticked
+  const cLabel=document.createElement('label');
+  cLabel.style.cssText='display:flex;align-items:center;gap:9px;font-size:12.5px;color:#075E54;background:white;border:1.5px solid #25D366;border-radius:14px;padding:9px 14px;cursor:pointer;max-width:92%;line-height:1.4;';
+  const cBox=document.createElement('input');
+  cBox.type='checkbox';cBox.style.cssText='width:18px;height:18px;flex-shrink:0;accent-color:#075E54;cursor:pointer;';
+  const cText=document.createElement('span');cText.innerHTML=fmt(s().consentLabel);
+  cLabel.appendChild(cBox);cLabel.appendChild(cText);
+  choicesEl().appendChild(cLabel);
+
+  const genBtn=document.createElement('button');genBtn.className='choice-btn primary';genBtn.textContent=s().genBtn;
+  genBtn.onclick=async()=>{
+    if(!cBox.checked){await botSay(s().consentRequired,true);return;}  // consent is mandatory
+    cv.consent=true;
+    choicesEl().classList.add('hidden');userSay(s().genBtn);
+    const loader=showLoader(s().translating);
+    try{await translateCV();await saveSubmission();}finally{loader.remove();}
+    showCV();
+  };
+  choicesEl().appendChild(genBtn);
+}
+
+/* ══════════════════════════════════════════════
+   CV HTML BUILDER
+══════════════════════════════════════════════ */
+function cvHTML(){
+  // Final CV output is ALWAYS English / LTR, regardless of input language
+  const E=T.en;
+  const isAr=false;
+  const dir='ltr';
+  const al='left';
+  const pl='padding-left';
+
+  // Enhance all data
+  const name=tCase(cv.name.trim());
+  const title=cleanTitle(cv.title);
+  const city=tCase(fixSpell(cv.city.trim()));
+  const email=cv.email.trim().toLowerCase();
+  const phone=fmtPhone(cv.phone,cv.countryCode);
+  const linkedin=cv.linkedin.trim();
+  const relocate=cv.relocate?E.relocateNote(cv.relocateWhere?tCase(fixSpell(cv.relocateWhere.trim())):''):'';
+
+  const rawSkills=cv.skills.split(',').map(x=>x.trim()).filter(Boolean);
+  const skills=rawSkills.map(enhanceSkill);
+
+  const langs=cv.langs;  // already built by askLanguages()
+
+  const jobs=cv.jobs.map(j=>({
+    company:cleanCompany(j.company),
+    title:cleanTitle(j.title),
+    from:tCase(j.from.trim()),
+    to:tCase(fixSpell(j.to.trim())),
+    duties:j.duties.map(enhanceDuty).filter(Boolean),
+  }));
+
+  // Education — don't show field if it's same/redundant as level
+  const eduIdx=s().edu.indexOf(cv.eduLevel);
+  const eduLevel=tCase(eduIdx>=0?E.edu[eduIdx]:cv.eduLevel);
+  const eduField=cv.eduField?fixAcr(tCase(fixSpell(cv.eduField.trim()))):'';
+  const eduInst=tCase(fixSpell(cv.eduInst.trim()));
+  const eduYear=cv.eduYear.trim();
+  // Suppress field if it's just "highschool" or empty
+  const showEduField=eduField&&eduField.toLowerCase()!=='high school'&&eduField.toLowerCase()!=='highschool'&&eduField!==cv.eduLevel;
+
+  const contacts=[
+    city&&`📍 ${city}`,
+    email&&`✉️ ${email}`,
+    phone&&`📱 ${phone}`,
+    linkedin&&`🔗 ${linkedin}`,
+  ].filter(Boolean).join('&nbsp;&nbsp;|&nbsp;&nbsp;');
+
+  const sec=t=>`<div style="font-size:10.5px;font-weight:bold;color:#1A3A5C;text-transform:uppercase;letter-spacing:1.4px;border-bottom:1.5px solid #1A3A5C;padding-bottom:3px;margin-top:22px;margin-bottom:10px;">${t}</div>`;
+
+  const jobsHTML=jobs.map(j=>{
+    const bullets=j.duties.map(d=>`<li style="margin-bottom:4px;">${d}</li>`).join('');
+    return `<div style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px;flex-direction:${isAr?'row-reverse':'row'};">
+        <span style="font-weight:bold;font-size:13px;">${j.title}</span>
+        <span style="font-size:11px;color:#666;white-space:nowrap;">${j.from} – ${j.to}</span>
+      </div>
+      <div style="font-size:12px;color:#444;margin:2px 0 6px;font-style:italic;">${j.company}</div>
+      ${bullets?`<ul style="${pl}:18px;font-size:12px;color:#333;line-height:1.6;">${bullets}</ul>`:''}
+    </div>`;
+  }).join('');
+
+  const skillTags=skills.map(sk=>`<span style="background:#EEF4FF;border:1px solid #B0C4E8;padding:4px 11px;border-radius:14px;font-size:11.5px;margin:3px;display:inline-block;">${sk}</span>`).join('');
+
+  const yrsIdx=s().yrs.indexOf(cv.yearsExp);
+  const yrsEn=yrsIdx>=0?E.yrs[yrsIdx]:cv.yearsExp;
+  const summary=E.sumTpl(title,yrsEn,jobs.length?jobs[0].company:'',skills);
+
+  return `<div style="font-family:Arial,Helvetica,sans-serif;direction:${dir};text-align:${al};color:#1a1a1a;padding:40px 50px;line-height:1.55;background:white;">
+  <div style="font-size:27px;font-weight:bold;color:#1A3A5C;margin-bottom:3px;">${name}</div>
+  <div style="font-size:14px;color:#555;margin-bottom:10px;font-weight:500;">${title}</div>
+  <div style="font-size:11.5px;color:#555;padding-bottom:13px;border-bottom:2px solid #1A3A5C;margin-bottom:18px;">${contacts}${relocate?`<br><span style="color:#1A3A5C;font-weight:600;">✈️ ${relocate}</span>`:''}</div>
+  ${sec(E.secSum)}
+  <p style="font-size:12.5px;color:#333;line-height:1.6;">${summary}</p>
+  ${jobs.length?sec(E.secExp)+jobsHTML:''}
+  ${sec(E.secEdu)}
+  <div style="margin-bottom:12px;">
+    <div style="font-weight:bold;font-size:13px;">${eduLevel}${showEduField?' – '+eduField:''}</div>
+    <div style="font-size:12px;color:#555;margin-top:2px;">${eduInst}${eduYear?' &nbsp;|&nbsp; '+eduYear:''}</div>
+  </div>
+  ${skills.length?sec(E.secSki)+`<div style="margin-top:5px;">${skillTags}</div>`:''}
+  ${langs?sec(E.secLng)+`<div style="font-size:12.5px;line-height:1.7;">${langs}</div>`:''}
+</div>`;
+}
+
+/* ══════════════════════════════════════════════
+   OVERLAY + PRINT
+══════════════════════════════════════════════ */
+function showCV(){
+  document.getElementById('cv-rendered').innerHTML=cvHTML();
+  document.getElementById('cv-toolbar-title').textContent=s().previewTitle;
+  document.getElementById('cv-footer-hint').innerHTML=s().hint;
+  document.getElementById('cv-overlay').classList.add('open');
+  document.title=pdfFilename(cv.name);
+}
+function closeCV(){
+  document.getElementById('cv-overlay').classList.remove('open');
+  document.title='CV Builder | مساعد السيرة الذاتية';
+  if(!document.getElementById('_vs')){
+    const m=document.createElement('span');m.id='_vs';document.body.appendChild(m);
+    setProgress(100);
+    botSay(s().back,true).then(()=>{
+      choicesEl().innerHTML='';choicesEl().classList.remove('hidden');
+      const b=document.createElement('button');b.className='choice-btn primary';b.textContent=s().viewBtn;
+      b.onclick=()=>showCV();choicesEl().appendChild(b);
+    });
+  }
+}
+function savePDF(){window.print();}
+
+window.onload=()=>run();
+</script>
+</body>
+</html>
