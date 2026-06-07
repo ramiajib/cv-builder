@@ -128,11 +128,13 @@
 ══════════════════════════════════════════════ */
 let lang=null, resolver=null, inputLive=false;
 const cv={
-  name:'',title:'',city:'',email:'',phone:'',linkedin:'',countryCode:'',
+  name:'',title:'',city:'',email:'',phone:'',phone2:'',linkedin:'',countryCode:'',
+  nationality:'',visa:'',
   relocate:false,relocateWhere:'',consent:false,
   yearsExp:'',jobs:[],
-  eduLevel:'',eduField:'',eduInst:'',eduYear:'',
+  eduLevel:'',eduField:'',eduInst:'',eduYear:'',eduList:[],
   skills:'',langs:'',summary:'',
+  certifications:'',training:'',achievements:'',volunteer:'',
   _saved:false,_fromUpload:false
 };
 
@@ -195,6 +197,8 @@ const T={
     saveErr:  '⚠️ Something went wrong creating the PDF. Please try again.',
     back:     '✅ Your CV is ready! Tap to view or save it again.',
     viewBtn:  '👁 View CV Again',
+    discoverMsg: '🎯 Want to see jobs that match your CV? Discover real opportunities tailored to your profile.',
+    discoverBtn: '🔍 Discover Matching Jobs →',
     // ── Start step + Upload flow ──
     chooseStart:'How would you like to start?',
     optUpload: '📤 Upload my CV',
@@ -219,7 +223,11 @@ const T={
     efAddJob:'➕ Add job',efRemove:'Remove',
     efEducation:'Education',efLevel:'Level',efField:'Field of study',efInst:'Institution',efYear:'Year',
     efSkills:'Skills (comma-separated)',efLangs:'Languages',
+    efNationality:'Nationality',efVisa:'Visa / Residency status',
+    efCerts:'Certifications (one per line)',efTraining:'Training & Courses (one per line)',
+    efAch:'Achievements (one per line)',efVol:'Volunteer experience (one per line)',
     secSum:'Professional Summary',secExp:'Work Experience',secEdu:'Education',secSki:'Skills',secLng:'Languages',
+    secCert:'Certifications',secTrain:'Training & Courses',secAch:'Achievements',secVol:'Volunteer Experience',
     err_empty:'Please type something to continue.',
     err_email:'Please enter a valid email address.',
     err_year: 'Please enter a valid year (e.g. 2021).',
@@ -284,6 +292,8 @@ const T={
     saveErr:  '⚠️ حدث خطأ أثناء إنشاء ملف PDF. يرجى المحاولة مرة أخرى.',
     back:     '✅ سيرتك الذاتية جاهزة! اضغط لعرضها أو حفظها مجدداً.',
     viewBtn:  '👁 عرض السيرة الذاتية مجدداً',
+    discoverMsg: '🎯 هل تريد رؤية الوظائف المناسبة لسيرتك؟ اكتشف فرص عمل حقيقية مصمّمة خصيصاً لملفك.',
+    discoverBtn: '🔍 اكتشف الوظائف المناسبة →',
     // ── خطوة البداية + رفع السيرة ──
     chooseStart:'كيف تريد أن تبدأ؟',
     optUpload: '📤 رفع سيرتي الذاتية',
@@ -308,7 +318,11 @@ const T={
     efAddJob:'➕ إضافة وظيفة',efRemove:'حذف',
     efEducation:'التعليم',efLevel:'المستوى',efField:'التخصص',efInst:'المؤسسة التعليمية',efYear:'السنة',
     efSkills:'المهارات (افصلها بفاصلة)',efLangs:'اللغات',
+    efNationality:'الجنسية',efVisa:'حالة الإقامة / التأشيرة',
+    efCerts:'الشهادات (كل واحدة في سطر)',efTraining:'الدورات التدريبية (كل واحدة في سطر)',
+    efAch:'الإنجازات (كل واحدة في سطر)',efVol:'العمل التطوعي (كل واحد في سطر)',
     secSum:'الملخص المهني',secExp:'الخبرة العملية',secEdu:'التعليم',secSki:'المهارات',secLng:'اللغات',
+    secCert:'الشهادات',secTrain:'الدورات التدريبية',secAch:'الإنجازات',secVol:'العمل التطوعي',
     err_empty:'الرجاء كتابة شيء للمتابعة.',
     err_email:'الرجاء إدخال بريد إلكتروني صحيح.',
     err_year: 'الرجاء إدخال سنة صحيحة (مثال: 2021).',
@@ -378,10 +392,17 @@ const CITY_CODES={
   'new york':'+1','los angeles':'+1',houston:'+1',chicago:'+1',
   // Turkey
   istanbul:'+90',ankara:'+90',
+  // South Africa
+  'cape town':'+27',johannesburg:'+27',pretoria:'+27',durban:'+27',
+  // Cyprus
+  nicosia:'+357',limassol:'+357',
 };
 function detectCode(city){return CITY_CODES[city.toLowerCase().trim()]||null;}
 function fmtPhone(p,code){
   if(!p)return'';
+  // Already internationally formatted with human grouping (e.g. "+966 50 065 4259")?
+  // Keep the candidate's own spacing — collapsing it hurts readability.
+  if(/^\+\d[\d\s]{6,}$/.test(p.trim())&&/\s/.test(p.trim()))return p.trim().replace(/\s{2,}/g,' ');
   const codeDigits=(code||'').replace(/\D/g,'');
   let t=p.replace(/[^\d+]/g,'');
   if(t.startsWith('00'))t='+'+t.slice(2);            // international 00-prefix → +
@@ -452,6 +473,18 @@ async function translateCV(){
     for(const d of j.duties)out.push(await translateToEn(d));
     j.duties=out;
   }
+  // newly-captured sections + GCC identity fields
+  if(cv.certifications)cv.certifications=await translateToEn(cv.certifications);
+  if(cv.training)cv.training=await translateToEn(cv.training);
+  if(cv.achievements)cv.achievements=await translateToEn(cv.achievements);
+  if(cv.volunteer)cv.volunteer=await translateToEn(cv.volunteer);
+  if(cv.nationality)cv.nationality=await translateToEn(cv.nationality);
+  if(cv.visa)cv.visa=await translateToEn(cv.visa);
+  for(const e of (cv.eduList||[])){
+    e.level=await translateToEn(e.level);
+    e.field=await translateToEn(e.field);
+    e.inst=await translateToEn(e.inst);
+  }
 }
 
 /* ══════════════════════════════════════════════
@@ -461,16 +494,17 @@ async function translateCV(){
 const SUPA_URL='https://wlxidarktzpistgpawnr.supabase.co';
 const SUPA_KEY='sb_publishable_3V7DoYDnsmbkNv-DTdo2uw_MSb7OvzE';
 const PRIVACY_EMAIL='info@carmyne.ae';               // contact for data access / deletion requests
+const MATCHER_URL='https://carmyne-job-matcher.netlify.app';
 async function saveSubmission(){
-  if(!cv.consent)return;                            // only store if the user agreed
+  if(!cv.consent)return null;                       // only store if the user agreed
   try{
-    await fetch(SUPA_URL+'/rest/v1/submissions',{
+    const res=await fetch(SUPA_URL+'/rest/v1/submissions',{
       method:'POST',
       headers:{
         'apikey':SUPA_KEY,
         'Authorization':'Bearer '+SUPA_KEY,
         'Content-Type':'application/json',
-        'Prefer':'return=minimal'
+        'Prefer':'return=representation'            // return the inserted row so we get the id
       },
       body:JSON.stringify({
         name:cv.name,title:cv.title,city:cv.city,email:cv.email,
@@ -480,7 +514,10 @@ async function saveSubmission(){
         input_lang:lang,consent:true,payload:cv,user_agent:navigator.userAgent
       })
     });
-  }catch(e){/* never block CV generation if the save fails */}
+    if(!res.ok)return null;
+    const rows=await res.json();
+    return rows?.[0]?.id??null;
+  }catch(e){return null;/* never block CV generation if the save fails */}
 }
 
 /* ══════════════════════════════════════════════
@@ -488,7 +525,10 @@ async function saveSubmission(){
 ══════════════════════════════════════════════ */
 function tCase(str){
   const m=new Set(['a','an','the','and','but','or','for','nor','at','to','by','in','of','as']);
-  return str.toLowerCase().split(/\s+/).map((w,i)=>(!m.has(w)||i===0)?w.charAt(0).toUpperCase()+w.slice(1):w).join(' ');
+  return str.toLowerCase().split(/\s+/).map((w,i)=>{
+    let r=(!m.has(w)||i===0)?w.charAt(0).toUpperCase()+w.slice(1):w;
+    return r.replace(/-([a-z])/g,(_,c)=>'-'+c.toUpperCase());   // capitalize after hyphen (Al-Kakhi)
+  }).join(' ');
 }
 
 /* Acronyms / initialisms that should keep a fixed casing (e.g. Ceo → CEO) */
@@ -500,11 +540,38 @@ const ACRO={
   hse:'HSE',osha:'OSHA',iso:'ISO',vat:'VAT',ngo:'NGO',un:'UN',eu:'EU',uae:'UAE',uk:'UK',usa:'USA',ksa:'KSA',gcc:'GCC',
   seo:'SEO',sem:'SEM',smm:'SMM',pdf:'PDF',atm:'ATM',gps:'GPS',cctv:'CCTV','3d':'3D','2d':'2D',
   rn:'RN',lpn:'LPN',cpa:'CPA',acca:'ACCA',cma:'CMA',pmp:'PMP',mba:'MBA',phd:'PhD',msc:'MSc',bsc:'BSc',
-  ielts:'IELTS',toefl:'TOEFL',ibm:'IBM',kfc:'KFC',stc:'STC',hsbc:'HSBC',saudia:'SAUDIA'
+  ielts:'IELTS',toefl:'TOEFL',ibm:'IBM',kfc:'KFC',stc:'STC',hsbc:'HSBC',saudia:'SAUDIA',
+  // Engineering / software tools — keep their canonical casing even if typed lowercase
+  matlab:'MATLAB',simulink:'Simulink',hysys:'HYSYS',aspen:'Aspen',labview:'LabVIEW',
+  autocad:'AutoCAD',solidworks:'SolidWorks',ansys:'ANSYS',catia:'CATIA',revit:'Revit',
+  powerpoint:'PowerPoint',excel:'Excel',word:'Word',outlook:'Outlook',
+  python:'Python',java:'Java',javascript:'JavaScript',typescript:'TypeScript',
+  nodejs:'Node.js','node.js':'Node.js',react:'React',angular:'Angular','vue':'Vue',
+  sqlserver:'SQL Server',mysql:'MySQL',postgresql:'PostgreSQL',mongodb:'MongoDB',
+  github:'GitHub',gitlab:'GitLab','power bi':'Power BI',powerbi:'Power BI',tableau:'Tableau',
+  autoc:'AutoCAD',cad:'CAD',cae:'CAE',cfd:'CFD',plc:'PLC',scada:'SCADA',co2:'CO₂',
+   co:'CO',nih:'NIH',edhec:'EDHEC',aub:'AUB',lvmh:'LVMH'
 };
 function fixAcr(str){
   if(!str)return str;
   return str.replace(/[A-Za-z0-9]+/g,w=>ACRO[w.toLowerCase()]||w);
+}
+// Title-case a phrase but PRESERVE tokens that are already meaningfully cased:
+// ALL-CAPS acronyms (MATLAB, HYSYS, SQL), internal/Camel caps (LabVIEW, AutoCAD,
+// PowerPoint) and tokens with digits (3D, S7). Stops enhancement from flattening
+// real product/tech names into "Matlab", "Hysys", "Labview".
+function smartCase(str){
+  const minor=new Set(['a','an','the','and','but','or','nor','at','to','by','in','of','as','on','for','vs']);
+  return (str||'').split(/\s+/).map((w,i)=>{
+    const core=w.replace(/[^A-Za-z0-9]/g,'');
+    if(!core)return w;
+    if(/^[A-Z0-9]+$/.test(core)&&core.length>=2)return w;          // MATLAB, HYSYS, SQL, 3D
+    if(/[a-z]/.test(core)&&/[A-Z]/.test(core.slice(1)))return w;    // LabVIEW, AutoCAD, PowerPoint
+    if(i>0&&minor.has(core.toLowerCase()))return w.toLowerCase();   // "…University of Beirut"
+    // Title-case the first LETTER (not char 0 — so "(material" → "(Material"),
+    // lowercasing the rest of that run; keep any trailing punctuation.
+    return w.toLowerCase().replace(/[a-z]/,c=>c.toUpperCase());
+  }).join(' ');
 }
 
 const SPELL={
@@ -571,7 +638,13 @@ function cleanTitle(raw){
     .replace(/\bmus[ah]a3?id\b/gi,'Assistant')
     .replace(/\bsawaa2?\b|\bsawa2\b/gi,'Driver')
     .replace(/\bof phitigraphy\b|\bof photigraphy\b|\bof photographi\b/gi,'of Photography');
-  return fixAcr(tCase(fixSpell(t.trim())));
+  // Preserve embedded acronyms / codes (CHEN 201, IBDAA, CEO) via smartCase, but
+  // normalise a fully SHOUTY title ("SENIOR SALES EXECUTIVE" → "Senior Sales …").
+  const letters=t.replace(/[^A-Za-z]/g,'');
+  // Only normalise a MULTI-word shouty title ("SENIOR SALES EXECUTIVE"); a single
+  // all-caps token is an acronym/name to keep (IBDAA, NASA, CHEN).
+  const allShout=t.trim().split(/\s+/).length>=2&&letters.length>3&&letters===letters.toUpperCase();
+  return fixAcr((allShout?tCase:smartCase)(fixSpell(t.trim())));
 }
 
 function cleanCompany(r){return r?fixAcr(tCase(fixSpell(r.trim()))):r;}
@@ -659,16 +732,28 @@ function genericDuty(raw){
   }
   return `${body}, ${suf}`;
 }
+// Repair compound words split by a hyphen + space during PDF/OCR extraction:
+// "Ni- based" → "Ni-based", "low- emission" → "low-emission", "real- world" →
+// "real-world". Only joins when the part AFTER the hyphen is lowercase, so genuine
+// date/range separators ("2026 – Present", "A – B") are left untouched.
+function fixHyphenSpacing(s){
+  return (s||'')
+    .replace(/([A-Za-z0-9]{1,})\s*[\-–—]\s+([a-z]{2,})/g,'$1-$2')   // word- word → word-word
+    .replace(/\s{2,}/g,' ');
+}
 function enhanceDuty(raw,preserve){
   if(!raw)return'';
-  const fixed=fixSpell(raw.trim());
-  // Uploaded CVs usually already contain strong, specific bullets. Keep those
-  // verbatim (spell-fixed + capitalized) instead of replacing real achievements
-  // with generic canned text.
+  const fixed=fixHyphenSpacing(fixSpell(raw.trim()));
+  // Uploaded CVs already contain the candidate's real, specific achievements
+  // (often quantified). Preserve EVERY real bullet verbatim (spell-fixed +
+  // capitalized) — never replace it with generic canned text or a keyword-matched
+  // template, which would destroy the strongest content on the page.
   if(preserve){
-    const clean=fixed.replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
-    if(clean.split(/\s+/).filter(Boolean).length>=8)return capFirst(clean);
+    const clean=fixed.replace(/^[•\-\*▪◦·‣«»●0]+\s+(?=[A-Za-z])/,'').replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
+    if(clean.split(/\s+/).filter(Boolean).length>=2)return capFirst(clean);
+    return'';                                         // drop stray single-word fragments
   }
+  // From-scratch flow: typed input is terse, so expand it into a polished bullet.
   for(const[pat,exp]of DUTY_MAP){
     if(pat.test(fixed)||pat.test(raw))return exp;
   }
@@ -707,21 +792,71 @@ function enhanceSkill(raw){
   if(!raw)return'';
   const key=fixSpell(raw).toLowerCase().trim();
   if(SKILL_MAP[key])return SKILL_MAP[key];
-  for(const[k,v]of Object.entries(SKILL_MAP)){if(key.includes(k))return v;}
-  return fixAcr(tCase(fixSpell(raw.trim())));
+  for(const[k,v]of Object.entries(SKILL_MAP)){if(key===k)return v;}   // exact map first
+  if(key.split(/\s+/).length<=2)                                      // fuzzy only for terse from-scratch input
+    for(const[k,v]of Object.entries(SKILL_MAP)){if(key.includes(k))return v;}
+  return fixAcr(smartCase(fixSpell(raw.trim())));                     // preserve MATLAB/LabVIEW/AutoCAD casing
+}
+// Split a skills blob into category groups. Handles both a flat list ("Python, SQL,
+// Excel") and the very common labelled form ("Programming & Modeling: MATLAB, Python
+// | Tools: AutoCAD"). Each labelled line becomes its own group so the structure the
+// candidate authored survives instead of being mashed into one comma run.
+function parseSkillGroups(raw){
+  const out=[];
+  const add=(label,str)=>{
+    const items=(str||'').split(/[,،;·•|]/).map(x=>x.replace(/[•▪◦·‣«»‹›]/g,' ').trim())
+      .filter(Boolean).map(enhanceSkill).filter(x=>x&&x.replace(/[^A-Za-z0-9]/g,'').length>=2);
+    if(items.length)out.push({label:label||'',items:[...new Set(items)]});
+  };
+  for(const line of (raw||'').split('\n').map(l=>l.trim()).filter(Boolean)){
+    const m=line.match(/^([A-Za-z][A-Za-z &/]{1,30}?)\s*:\s*(.+)$/);
+    if(m&&m[1].split(/\s+/).length<=4)add(fixAcr(tCase(m[1].trim())),m[2]);
+    else add('',line);
+  }
+  return out;
+}
+// Parse a languages blob into [{name, level}], understanding the common forms:
+// "English (Fluent), Arabic (Native)", "English - Fluent", and the prose style
+// "Fluent in English and Arabic; elementary proficiency in French".
+const LANG_LV_RE=/native|mother\s*tongue|fluent|fluency|advanced|proficient|proficiency|professional|upper[- ]?intermediate|intermediate|conversational|working|elementary|basic|beginner|limited|good|fair/i;
+function normLangLevel(t){
+  t=(t||'').toLowerCase();
+  if(/native|mother/.test(t))return'Native';
+  if(/fluent|fluency/.test(t))return'Fluent';
+  if(/advanced|proficient|proficiency|professional/.test(t))return'Advanced';
+  if(/upper|intermediate|conversational|working|good/.test(t))return'Intermediate';
+  if(/element|basic|beginn|limited|fair/.test(t))return'Basic';
+  return t?capFirst(t):'';
+}
+function parseLanguages(raw){
+  if(!raw)return[];
+  const out=[],seen=new Set();
+  const push=(name,lvl)=>{name=tCase((name||'').trim());const k=name.toLowerCase();
+    if(name&&name.length>=2&&!seen.has(k)&&!LANG_LV_RE.test(name)){seen.add(k);out.push({name,level:normLangLevel(lvl)});}};
+  const clauses=raw.split(/[;\n،]+|,(?![^()]*\))/).map(c=>c.replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+  for(const c of clauses){
+    const lv=(c.match(LANG_LV_RE)||[''])[0];
+    const namesPart=c.replace(LANG_LV_RE,' ')
+      .replace(/\b(in|proficiency|level|skills?|languages?|mother\s*tongue|of|with|a|an|the)\b/ig,' ')
+      .replace(/[()\[\]:–—\-]/g,' ').replace(/\s{2,}/g,' ').trim();
+    const names=namesPart.split(/\s+and\s+|\s*&\s*|\s*\/\s*/i).map(x=>x.trim()).filter(Boolean);
+    (names.length?names:[namesPart]).forEach(n=>push(n,lv));
+  }
+  return out;
 }
 
-// Enhance (not copy-paste) an existing profile/summary: clean it, then extend it
-// with a polished, skills-aware professional close. Returns null if there isn't
-// enough usable text, so the caller can fall back to a fully generated summary.
-function enhanceSummary(raw,skills){
-  let base=fixAcr(capFirst(fixSpell((raw||'').trim())));
-  base=base.replace(/\s+/g,' ').replace(/[.\s]+$/,'').trim();
-  if(base.length<40)return null;
-  const strengths=(skills&&skills.length)
-    ? ` Brings recognized strengths in ${skills.slice(0,3).join(', ')}, paired with a proactive, solutions-focused mindset and sharp attention to detail.`
-    : ` Combines strong technical expertise with a proactive, solutions-focused mindset and sharp attention to detail.`;
-  return `${base}.${strengths} Consistently delivers high-quality, reliable results and is now seeking a role offering new challenges, greater responsibility, and meaningful, measurable impact.`;
+// Clean an uploaded profile/summary and return the candidate's OWN words —
+// spell-fixed, de-spaced, sentence-terminated. We deliberately do NOT append
+// canned marketing sentences ("proactive, solutions-focused mindset…"): uploaded
+// summaries are usually self-written and strong, and templated filler only dilutes
+// them and reads as AI-generated. Returns null if there isn't enough usable text,
+// so the caller can fall back to a fully generated summary (from-scratch flow).
+function enhanceSummary(raw){
+  let base=fixAcr(capFirst(fixHyphenSpacing(fixSpell((raw||'').trim()))));
+  base=base.replace(/\s+/g,' ').replace(/\s+([.,;:])/g,'$1').replace(/\s+$/,'').trim();
+  if(base.replace(/\s/g,'').length<40)return null;
+  if(!/[.!?]$/.test(base))base+='.';
+  return base;
 }
 
 function pdfFilename(name){
@@ -986,7 +1121,8 @@ function cvData(){
   const linkedin=cv.linkedin.trim();
   const relocate=cv.relocate?E.relocateNote(cv.relocateWhere?tCase(fixSpell(cv.relocateWhere.trim())):''):'';
 
-  const skills=cv.skills.split(',').map(x=>x.trim()).filter(Boolean).map(enhanceSkill);
+  const skillGroups=parseSkillGroups(cv.skills);
+  const skills=skillGroups.flatMap(g=>g.items);   // flat list (summary template + tag fallback)
 
   const jobs=cv.jobs.map(j=>({
     company:cleanCompany(j.company),
@@ -996,33 +1132,49 @@ function cvData(){
     duties:j.duties.map(d=>enhanceDuty(d,cv._fromUpload)).filter(Boolean),
   }));
 
-  // Education — don't show field if it's same/redundant as level
-  const eduIdx=s().edu.indexOf(cv.eduLevel);
-  const eduLevel=tCase(eduIdx>=0?E.edu[eduIdx]:cv.eduLevel);
-  const eduField=cv.eduField?fixAcr(tCase(fixSpell(cv.eduField.trim()))):'';
-  const eduInst=tCase(fixSpell(cv.eduInst.trim()));
-  const eduYear=cv.eduYear.trim();
-  const showEduField=eduField&&eduField.toLowerCase()!=='high school'&&eduField.toLowerCase()!=='highschool'&&eduField!==cv.eduLevel;
+  // Education — support multiple entries; hide field when redundant with level
+  const fmtEdu=(level,field,inst,year)=>{
+    const i=s().edu.indexOf(level);
+    const lv=fixAcr(smartCase(i>=0?E.edu[i]:(level||'')));   // keep MSc/BSc/MBA/PhD casing
+    const fd=field?fixAcr(tCase(fixSpell(field.trim()))):'';
+    const showField=!!fd&&fd.toLowerCase()!=='high school'&&fd.toLowerCase()!=='highschool'&&fd.toLowerCase()!==lv.toLowerCase();
+    return{level:lv,field:fd,inst:fixAcr(smartCase(fixSpell((inst||'').trim()))),year:(year||'').trim(),showField};
+  };
+  let eduList=((cv.eduList&&cv.eduList.length)?cv.eduList.map(e=>fmtEdu(e.level,e.field,e.inst,e.year))
+    :[fmtEdu(cv.eduLevel,cv.eduField,cv.eduInst,cv.eduYear)]).filter(e=>e.level||e.inst||e.field);
+  const edu=eduList[0]||{level:'',field:'',inst:'',year:'',showField:false};
 
-  // Languages → [{name, level}]
-  const langs=(cv.langs||'').split(/[,،]/).map(x=>x.trim()).filter(Boolean).map(part=>{
-    const m=part.split(/\s*[–—-]\s*/);
-    let nm=part,lv='';
-    if(m.length>=2){nm=m[0].trim();lv=m.slice(1).join(' ').trim();}
-    return{name:tCase(nm),level:lv};
-  }).filter(l=>l.name);
+  // Newly-captured sections (preserve the candidate's real content; clean only).
+  // Drop fragments with fewer than 3 letters (stray numbers/symbols from banners).
+  const keepItem=x=>x&&x.replace(/[^A-Za-z]/g,'').length>=3;
+  const splitLines=v=>(v||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  const certifications=splitLines(cv.certifications).map(x=>fixAcr(capFirst(fixSpell(x)))).filter(keepItem);
+  const training=splitLines(cv.training).map(x=>fixAcr(capFirst(fixSpell(x)))).filter(keepItem);
+  const achievements=splitLines(cv.achievements).map(x=>capFirst(fixSpell(x))).filter(keepItem);
+  const volunteer=splitLines(cv.volunteer).map(x=>capFirst(fixSpell(x))).filter(keepItem);
 
-  // Summary — enhance an uploaded profile, else generate a polished one
+  // GCC identity (nationality + visa only) and a second phone if present
+  const nationality=cv.nationality?tCase(fixSpell(cv.nationality.trim())):'';
+  const visa=cv.visa?fixAcr(capFirst(fixSpell(cv.visa.trim()))):'';
+  const phone2=fmtPhone(cv.phone2,cv.countryCode);
+
+  // Languages → [{name, level}] — handles "Name (Level)", "Name - Level" and prose
+  // ("Fluent in English and Arabic; elementary proficiency in French").
+  const langs=parseLanguages(cv.langs);
+
+  // Summary — for uploads keep the candidate's own words (cleaned, no filler);
+  // for the from-scratch flow generate a polished template.
   const yrsIdx=s().yrs.indexOf(cv.yearsExp);
   const yrsEn=yrsIdx>=0?E.yrs[yrsIdx]:cv.yearsExp;
   const ownSummary=(cv.summary||'').trim();
-  const enhanced=(cv._fromUpload&&ownSummary.length>=40)?enhanceSummary(ownSummary,skills):null;
+  const enhanced=(cv._fromUpload&&ownSummary.length>=40)?enhanceSummary(ownSummary):null;
   const summary=enhanced||E.sumTpl(title,yrsEn,jobs.length?jobs[0].company:'',skills);
 
-  return {name,title,city,email,phone,linkedin,relocate,skills,jobs,
-    edu:{level:eduLevel,field:eduField,inst:eduInst,year:eduYear,showField:showEduField},
-    langs,summary,
-    labels:{sum:E.secSum,exp:E.secExp,edu:E.secEdu,ski:E.secSki,lng:E.secLng}};
+  return {name,title,city,email,phone,phone2,linkedin,relocate,nationality,visa,
+    skills,skillGroups,jobs,edu,eduList,langs,summary,
+    certifications,training,achievements,volunteer,
+    labels:{sum:E.secSum,exp:E.secExp,edu:E.secEdu,ski:E.secSki,lng:E.secLng,
+      cert:E.secCert,train:E.secTrain,ach:E.secAch,vol:E.secVol}};
 }
 
 function cvHTML(){
@@ -1033,8 +1185,8 @@ function cvHTML(){
   const pl='padding-left';
 
   const d=cvData();
-  const {name,title,city,email,phone,linkedin,relocate,skills,jobs,langs:langList,summary}=d;
-  const {level:eduLevel,field:eduField,inst:eduInst,year:eduYear,showField:showEduField}=d.edu;
+  const {name,title,city,email,phone,phone2,linkedin,relocate,nationality,visa,skills,skillGroups,jobs,langs:langList,summary,
+    certifications,training,achievements,volunteer,eduList}=d;
 
   /* ── Vibrant palette + inline SVG icons (no emoji) ── */
   const BLUE='#2563EB', DARK='#111827', MUTED='#6B7280', BODY='#374151';
@@ -1049,12 +1201,15 @@ function cvHTML(){
   const contactItem=(ic,txt)=>`<span style="display:inline-flex;align-items:center;gap:5px;color:${BODY};"><span style="color:${BLUE};display:inline-flex;">${icon(ic,13)}</span>${txt}</span>`;
   const contacts=[
     phone&&contactItem(I_PHONE,phone),
+    phone2&&contactItem(I_PHONE,phone2),
     email&&contactItem(I_MAIL,email),
     city&&contactItem(I_PIN,city),
     linkedin&&contactItem(I_LINK,linkedin),
   ].filter(Boolean).join('');
+  const metaItems=[nationality&&('Nationality: '+nationality),visa].filter(Boolean).join('  ·  ');
 
   const sec=t=>`<div style="font-size:12px;font-weight:bold;color:${DARK};text-transform:uppercase;letter-spacing:1.3px;border-bottom:2px solid ${BLUE};padding-bottom:5px;margin:0 0 12px;">${t}</div>`;
+  const listSec=(label,arr)=>(arr&&arr.length)?`<div style="margin-bottom:16px;">${sec(label)}<ul style="padding-left:17px;margin:0;font-size:11.5px;color:${BODY};line-height:1.5;">${arr.map(x=>`<li style="margin-bottom:4px;">${x}</li>`).join('')}</ul></div>`:'';
 
   const jobsHTML=jobs.map(j=>{
     const bullets=j.duties.map(d=>`<li style="margin-bottom:4px;">${d}</li>`).join('');
@@ -1067,7 +1222,15 @@ function cvHTML(){
     </div>`;
   }).join('');
 
-  const skillTags=skills.map(sk=>`<span style="background:#EFF4FE;border:1px solid #BFD4F5;color:#1E40AF;padding:4px 10px;border-radius:13px;font-size:11px;margin:0 5px 6px 0;display:inline-block;">${sk}</span>`).join('');
+  const tag=sk=>`<span style="background:#EFF4FE;border:1px solid #BFD4F5;color:#1E40AF;padding:4px 10px;border-radius:13px;font-size:11px;margin:0 5px 6px 0;display:inline-block;">${sk}</span>`;
+  // Labelled categories → "Label: a · b · c" lines (keeps the candidate's structure);
+  // a single unlabelled group → pill tags as before.
+  const hasCats=(skillGroups||[]).some(g=>g.label);
+  const skillTags=hasCats
+    ? skillGroups.map(g=>g.label
+        ? `<div style="font-size:11.5px;color:${BODY};line-height:1.55;margin-bottom:5px;"><strong style="color:${DARK};">${g.label}:</strong> ${g.items.join(' · ')}</div>`
+        : `<div style="margin-bottom:4px;">${g.items.map(tag).join('')}</div>`).join('')
+    : skills.map(tag).join('');
 
   /* ── Languages → name + proficiency dots ── */
   const langDotCount=t=>{
@@ -1087,21 +1250,28 @@ function cvHTML(){
     </div>`;
   }).join('');
 
-  const eduHTML=`<div>
-    <div style="font-weight:bold;font-size:13px;color:${DARK};">${eduLevel}${showEduField?' – '+eduField:''}</div>
-    <div style="font-size:11.5px;color:${MUTED};margin-top:2px;">${eduInst}${eduYear?'  ·  '+eduYear:''}</div>
-  </div>`;
+  const eduHTML=eduList.map(e=>`<div style="margin-bottom:9px;">
+    <div style="font-weight:bold;font-size:13px;color:${DARK};">${e.level}${e.showField?' – '+e.field:''}</div>
+    <div style="font-size:11.5px;color:${MUTED};margin-top:2px;">${e.inst}${e.year?'  ·  '+e.year:''}</div>
+  </div>`).join('');
 
-  /* ── Two columns: Experience+Education (main) | Summary+Skills+Languages (sidebar) ── */
-  const mainCol=`${jobs.length?sec(E.secExp)+jobsHTML:''}${sec(E.secEdu)+eduHTML}`;
-  const sideCol=`${sec(E.secSum)}<p style="font-size:11.5px;color:${BODY};line-height:1.6;margin:0;">${summary}</p>`+
-    `${skills.length?`<div style="margin-top:20px;">${sec(E.secSki)}<div>${skillTags}</div></div>`:''}`+
-    `${langHTML?`<div style="margin-top:20px;">${sec(E.secLng)}${langHTML}</div>`:''}`;
+  /* ── Two columns: Experience+Achievements+Education+Volunteer (main) |
+        Summary+Skills+Certifications+Training+Languages (sidebar) ── */
+  const mainCol=`${jobs.length?sec(E.secExp)+jobsHTML:''}`+
+    `${listSec(E.secAch,achievements)}`+
+    `${eduHTML?sec(E.secEdu)+eduHTML:''}`+
+    `${listSec(E.secVol,volunteer)}`;
+  const sideCol=`${sec(E.secSum)}<p style="font-size:11.5px;color:${BODY};line-height:1.6;margin:0 0 16px;">${summary}</p>`+
+    `${skills.length?`${sec(E.secSki)}<div style="margin-bottom:16px;">${skillTags}</div>`:''}`+
+    `${listSec(E.secCert,certifications)}`+
+    `${listSec(E.secTrain,training)}`+
+    `${langHTML?`${sec(E.secLng)}${langHTML}`:''}`;
 
   return `<div style="font-family:'Inter','Segoe UI',Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;direction:ltr;text-align:left;color:${DARK};padding:38px 44px;line-height:1.55;background:white;">
     <div style="font-size:30px;font-weight:800;color:${DARK};letter-spacing:.5px;margin-bottom:3px;">${name}</div>
     ${title?`<div style="font-size:14.5px;color:${BLUE};font-weight:bold;margin-bottom:9px;">${title}</div>`:''}
     <div style="display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:11px;padding-bottom:12px;border-bottom:2px solid ${BLUE};">${contacts}</div>
+    ${metaItems?`<div style="font-size:11px;color:${MUTED};margin-top:8px;">${metaItems}</div>`:''}
     ${relocate?`<div style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:${BLUE};font-weight:bold;margin-top:10px;"><span style="display:inline-flex;">${icon(I_PLANE,13)}</span>${relocate}</div>`:''}
     <div style="display:flex;gap:32px;margin-top:20px;align-items:flex-start;">
       <div style="flex:1.7;min-width:0;">${mainCol}</div>
@@ -1154,10 +1324,12 @@ function buildCvDoc(d){
   // ── Header ──
   c.push({text:d.name,bold:true,fontSize:24,color:DARK,margin:[0,0,0,2]});
   if(d.title)c.push({text:d.title,bold:true,fontSize:12,color:BLUE,margin:[0,0,0,5]});
-  const contacts=[d.phone,d.email,d.city,d.linkedin].filter(Boolean).join('   ·   ');
+  const contacts=[d.phone,d.phone2,d.email,d.city,d.linkedin].filter(Boolean).join('   ·   ');
   if(contacts)c.push({text:contacts,fontSize:9,color:BODY,margin:[0,0,0,6]});
   c.push(rule(BLUE,1.5));
-  if(d.relocate)c.push({text:d.relocate,bold:true,fontSize:9,color:BLUE,margin:[0,7,0,0]});
+  const meta=[d.nationality&&('Nationality: '+d.nationality),d.visa].filter(Boolean).join('   ·   ');
+  if(meta)c.push({text:meta,fontSize:9,color:MUTED,margin:[0,6,0,0]});
+  if(d.relocate)c.push({text:d.relocate,bold:true,fontSize:9,color:BLUE,margin:[0,meta?2:7,0,0]});
 
   // ── Professional Summary ──
   c.push(...sectionHeader(L.sum));
@@ -1175,17 +1347,47 @@ function buildCvDoc(d){
     });
   }
 
-  // ── Skills ──
+  // ── Skills (preserve "Category: items" structure when present) ──
   if(d.skills.length){
     c.push(...sectionHeader(L.ski));
-    c.push({text:d.skills.join(',   '),fontSize:10,color:BODY,lineHeight:1.35});
+    const groups=d.skillGroups||[];
+    if(groups.some(g=>g.label)){
+      groups.forEach(g=>{
+        if(g.label)c.push({text:[{text:g.label+':  ',bold:true,color:DARK},{text:g.items.join(',   '),color:BODY}],fontSize:10,lineHeight:1.35,margin:[0,0,0,2]});
+        else c.push({text:g.items.join(',   '),fontSize:10,color:BODY,lineHeight:1.35,margin:[0,0,0,2]});
+      });
+    }else{
+      c.push({text:d.skills.join(',   '),fontSize:10,color:BODY,lineHeight:1.35});
+    }
   }
 
-  // ── Education ──
-  c.push(...sectionHeader(L.edu));
-  c.push({text:d.edu.level+(d.edu.showField?' – '+d.edu.field:''),bold:true,fontSize:10.5,color:DARK});
-  const eduSub=[d.edu.inst,d.edu.year].filter(Boolean).join('  ·  ');
-  if(eduSub)c.push({text:eduSub,fontSize:9.5,color:MUTED,margin:[0,1,0,0]});
+  // ── Certifications ──
+  if(d.certifications&&d.certifications.length){
+    c.push(...sectionHeader(L.cert));
+    c.push({ul:d.certifications.slice(),fontSize:10,color:BODY,lineHeight:1.3});
+  }
+
+  // ── Training & Courses ──
+  if(d.training&&d.training.length){
+    c.push(...sectionHeader(L.train));
+    c.push({ul:d.training.slice(),fontSize:10,color:BODY,lineHeight:1.3});
+  }
+
+  // ── Achievements ──
+  if(d.achievements&&d.achievements.length){
+    c.push(...sectionHeader(L.ach));
+    c.push({ul:d.achievements.slice(),fontSize:10,color:BODY,lineHeight:1.3});
+  }
+
+  // ── Education (one or more entries) ──
+  if(d.eduList&&d.eduList.length){
+    c.push(...sectionHeader(L.edu));
+    d.eduList.forEach((e,i)=>{
+      c.push({text:e.level+(e.showField?' – '+e.field:''),bold:true,fontSize:10.5,color:DARK,margin:[0,i?4:0,0,0]});
+      const sub=[e.inst,e.year].filter(Boolean).join('  ·  ');
+      if(sub)c.push({text:sub,fontSize:9.5,color:MUTED,margin:[0,1,0,0]});
+    });
+  }
 
   // ── Languages ──
   if(d.langs.length){
@@ -1194,6 +1396,12 @@ function buildCvDoc(d){
       text:[{text:l.name,bold:true},l.level?{text:'  —  '+l.level,color:MUTED}:''],
       fontSize:10,color:DARK,margin:[0,1,0,0]
     }));
+  }
+
+  // ── Volunteer Experience ──
+  if(d.volunteer&&d.volunteer.length){
+    c.push(...sectionHeader(L.vol));
+    c.push({ul:d.volunteer.slice(),fontSize:10,color:BODY,lineHeight:1.3});
   }
 
   return {
@@ -1214,12 +1422,33 @@ async function savePDF(){
     await loadScript(PDFMAKE_FONTS);
     pdfMake.createPdf(buildCvDoc(cvData())).download(pdfFilename(cv.name)+'.pdf');
     // Persist only when the user downloads the final version (consent required)
-    if(cv.consent&&!cv._saved){cv._saved=true;saveSubmission();}
+    if(cv.consent&&!cv._saved){
+      cv._saved=true;
+      const sid=await saveSubmission();
+      if(sid)showOpportunitiesButton(sid);
+    }
   }catch(e){
     botSay(st.saveErr,true);
   }finally{
     loader.remove();
   }
+}
+
+// Show a "Discover Matching Jobs" CTA after the PDF is saved to Supabase.
+function showOpportunitiesButton(sid){
+  botSay(s().discoverMsg);
+  const wrap=document.createElement('div');
+  wrap.className='choices';
+  const a=document.createElement('a');
+  a.href=MATCHER_URL+'/match?submission_id='+sid;
+  a.target='_blank';
+  a.rel='noopener noreferrer';
+  a.className='choice-btn primary';
+  a.style.textDecoration='none';
+  a.textContent=s().discoverBtn;
+  wrap.appendChild(a);
+  chatEl().appendChild(wrap);
+  wrap.scrollIntoView({behavior:'smooth'});
 }
 
 /* ══════════════════════════════════════════════
@@ -1237,7 +1466,86 @@ function loadScript(src){
   return _scriptCache[src];
 }
 
-// PDF → text (pdf.js). Reconstructs lines using the y-coordinate of each text item.
+// Detect a two-column (sidebar) layout. Returns an array of item-groups in
+// reading order (left column, then right). Single-column → one group. This stops
+// sidebar CVs from interleaving the sidebar and the main column on the same line.
+function detectColumns(items,pageW){
+  if(items.length<16||!pageW)return[items];
+  // Find a TRUE vertical gutter: a band of x where almost no item's horizontal
+  // span lands. This distinguishes a real sidebar (clean empty channel running
+  // down the page) from a single column that merely has right-aligned dates
+  // (no empty channel — body prose still fills the middle). The old width-fraction
+  // sweep mistook those dates for a column and scrambled single-column CVs.
+  const BINS=120,binW=pageW/BINS,cover=new Array(BINS).fill(0);
+  for(const it of items){
+    const x0=Math.max(0,it.x),x1=Math.min(pageW,it.x+(it.w||0));
+    const b0=Math.floor(x0/binW),b1=Math.floor(Math.max(x0,x1-1e-6)/binW);
+    for(let b=b0;b<=b1&&b<BINS;b++)cover[b]++;
+  }
+  const emptyT=Math.max(1,items.length*0.012);
+  let best=null,run=null;
+  for(let b=0;b<=BINS;b++){
+    if(b<BINS&&cover[b]<=emptyT){if(!run)run={s:b};run.e=b;}
+    else if(run){
+      const frac=((run.s+run.e)/2)/BINS,wBins=run.e-run.s+1;
+      if(frac>=0.18&&frac<=0.66&&wBins>=2&&(!best||wBins>best.wBins))best={...run,wBins};
+      run=null;
+    }
+  }
+  if(!best)return[items];
+  const bX=((best.s+best.e+1)/2)*binW;
+  const left=items.filter(it=>(it.x+(it.w||0)/2)<bX);
+  const right=items.filter(it=>(it.x+(it.w||0)/2)>=bX);
+  // Validate that the SMALLER side is a genuine column — not just a strip of
+  // right-aligned dates masquerading as one. A real sidebar carries varied prose
+  // (emails, addresses, skills); a fake one is almost entirely date/number tokens.
+  // So instead of a brittle "≥15% of all items" mass test (which wrongly rejected a
+  // narrow but real sidebar whenever the main column was very dense), we require
+  // both sides to span several lines AND the minority side to be mostly NON-dates.
+  const linesOf=arr=>new Set(arr.map(it=>Math.round(it.y/6))).size;
+  const linesText=arr=>{                         // group a column's items into line strings
+    const srt=arr.slice().sort((a,b)=>b.y-a.y||a.x-b.x);const out=[];let cur=[],ly=null;
+    for(const it of srt){if(ly!==null&&Math.abs(it.y-ly)>4){out.push(cur);cur=[];}cur.push(it);ly=it.y;}
+    if(cur.length)out.push(cur);
+    return out.map(l=>l.map(i=>i.s).join(' ').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+  };
+  const DATEISH=/^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|present|current|till|to|now|since)[a-z]*\.?|[0-9]{1,4}|[–—\-\/.,&:]|st|nd|rd|th)$/i;
+  const dateFrac=arr=>{const ls=linesText(arr);if(!ls.length)return 1;
+    const d=ls.filter(s=>{const t=s.split(/\s+/).filter(Boolean);return t.length&&t.every(w=>DATEISH.test(w));}).length;
+    return d/ls.length;};
+  const minority=left.length<=right.length?left:right;
+  if(linesOf(left)>=4&&linesOf(right)>=4&&minority.length>=8&&dateFrac(minority)<0.6)
+    return[left,right];
+  return[items];
+}
+// Join lines broken by a trailing hyphen. In designed/soft-wrapped CVs a line
+// ending in "-" is almost always semantic — a compound word ("brand-\nconsistent")
+// or a URL/slug wrapped across lines ("…/in/maria-el-\nchikhani-12345"). Keeping
+// the hyphen and concatenating restores both, and removes stray fragment lines
+// (e.g. a lone "consistent launches.") that otherwise confuse name detection.
+function dehyphenate(text){
+  const lines=text.split('\n');const out=[];
+  for(let i=0;i<lines.length;i++){
+    let l=lines[i];
+    while(/[A-Za-z]-$/.test(l)&&i+1<lines.length)l=l+lines[++i].trim();
+    out.push(l);
+  }
+  return out.join('\n');
+}
+// Group a set of positioned text items into lines (top→bottom, left→right).
+function itemsToLines(items){
+  if(!items.length)return'';
+  const sorted=items.slice().sort((a,b)=>b.y-a.y);          // top first
+  const lines=[];let cur=[],lastY=null;
+  for(const it of sorted){
+    if(lastY!==null&&Math.abs(it.y-lastY)>4){lines.push(cur);cur=[];}
+    cur.push(it);lastY=it.y;
+  }
+  if(cur.length)lines.push(cur);
+  return lines.map(ln=>ln.sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ')
+    .replace(/\s{2,}/g,' ').trim()).filter(Boolean).join('\n');
+}
+// PDF → text (pdf.js), column-aware so sidebar layouts don't scramble.
 async function extractPDF(file){
   await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -1246,16 +1554,15 @@ async function extractPDF(file){
   let out='';
   for(let p=1;p<=pdf.numPages;p++){
     const page=await pdf.getPage(p);
+    const pageW=page.getViewport({scale:1}).width;
     const tc=await page.getTextContent();
-    let lastY=null,line='';const lines=[];
-    for(const it of tc.items){
-      const y=it.transform[5];
-      if(lastY!==null&&Math.abs(y-lastY)>3){lines.push(line.trim());line='';}
-      line+=(line&&!line.endsWith(' ')?' ':'')+it.str;
-      lastY=y;
-    }
-    if(line.trim())lines.push(line.trim());
-    out+=lines.join('\n')+'\n';
+    const items=tc.items.filter(it=>it.str&&it.str.trim().length).map(it=>({
+      x:it.transform[4],y:it.transform[5],w:it.width||0,s:it.str
+    }));
+    if(!items.length){out+='\n';continue;}
+    const cols=detectColumns(items,pageW);
+    cols.sort((a,b)=>b.length-a.length);         // main (larger) column first, so name/summary lead
+    out+=cols.map(c=>dehyphenate(itemsToLines(c))).filter(Boolean).join('\n')+'\n';
   }
   return out;
 }
@@ -1265,6 +1572,59 @@ async function extractImage(file){
   await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
   const{data}=await Tesseract.recognize(file,'eng+ara');
   return (data&&data.text)||'';
+}
+
+// Flatten Tesseract's nested result (blocks→paragraphs→lines→words) into a flat
+// list of words, each with its bounding box. Works across tesseract.js builds
+// that expose either data.words directly or only data.blocks.
+function ocrWords(data){
+  if(!data)return[];
+  if(Array.isArray(data.words)&&data.words.length)return data.words;
+  const w=[];
+  for(const b of (data.blocks||[]))
+    for(const par of (b.paragraphs||[]))
+      for(const ln of (par.lines||[]))
+        for(const wd of (ln.words||[]))if(wd&&wd.text)w.push(wd);
+  return w;
+}
+// Scanned / image-only PDF → render each page to a canvas and OCR it.
+// CRITICAL: a flat dump of Tesseract's reading order interleaves the two columns
+// of a sidebar CV (a phone number lands in the middle of a job bullet; "Skills"
+// glues onto a sentence), which destroys the section structure the parser needs.
+// So we OCR with word-level boxes, then rebuild the text COLUMN-AWARE using the
+// exact same gutter detection + line grouping the embedded-text path uses.
+async function extractPdfOCR(file){
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let out='';
+  const maxPages=Math.min(pdf.numPages,5);
+  for(let p=1;p<=maxPages;p++){
+    const page=await pdf.getPage(p);
+    const sc=2;                                    // render scale (canvas px = pt × sc)
+    const vp=page.getViewport({scale:sc});
+    const canvas=document.createElement('canvas');
+    canvas.width=vp.width;canvas.height=vp.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+    const{data}=await Tesseract.recognize(canvas,'eng+ara');
+    const words=ocrWords(data);
+    if(words.length>=8){
+      // Map OCR boxes (top-left origin, px) → the parser's coordinate space
+      // (bottom-left origin, points) so detectColumns/itemsToLines just work.
+      const items=words.filter(w=>w.text&&w.text.trim()&&w.bbox).map(w=>({
+        x:w.bbox.x0/sc, y:(canvas.height-w.bbox.y0)/sc,
+        w:(w.bbox.x1-w.bbox.x0)/sc, s:w.text
+      }));
+      const cols=detectColumns(items,vp.width/sc);
+      cols.sort((a,b)=>b.length-a.length);         // main (larger) column first
+      out+=cols.map(c=>dehyphenate(itemsToLines(c))).filter(Boolean).join('\n')+'\n';
+    }else{
+      out+=((data&&data.text)||'')+'\n';           // no geometry → raw text fallback
+    }
+  }
+  return out;
 }
 
 async function uploadFlow(){
@@ -1297,6 +1657,12 @@ async function handleFile(file){
   let text='';
   try{text=isPDF?await extractPDF(file):await extractImage(file);}catch(e){text='';}
   loader.remove();
+  // Scanned / image-only PDF (no embedded text layer) → OCR the rendered pages
+  if(isPDF&&text.replace(/\s/g,'').length<30){
+    const lo=showLoader(s().ocrReading);
+    try{text=await extractPdfOCR(file);}catch(e){}
+    lo.remove();
+  }
   if(!text||text.replace(/\s/g,'').length<30){
     await botSay(s().parseFail);uploadRetryButtons();return;
   }
@@ -1304,7 +1670,7 @@ async function handleFile(file){
   parseCV(text);
   const l2=showLoader(s().analyzing);
   try{
-    cv.countryCode=detectCode(cv.city);
+    cv.countryCode=cv.countryCode||detectCode(cv.city);
     await translateCV();                       // free-text fields → English
     cv.eduLevel=await translateToEn(cv.eduLevel);
     cv.langs=await translateToEn(cv.langs);
@@ -1317,20 +1683,161 @@ function parseCV(text){
   const clean=text.replace(/\r/g,'').replace(/ /g,' ');
   const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean);
   cv.email=(clean.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)||[''])[0];
-  const ph=clean.match(/\+?\d[\d\s().\-]{7,}\d/);cv.phone=ph?ph[0].trim():'';
+  // Prefer phones that carry a country code / trunk prefix (avoids matching
+  // year-ranges like "2003-2004"); fall back to a single broad match otherwise.
+  const strictPh=(clean.match(/(?:\+|00)\d[\d\s().\-]{7,}\d|\b0\d[\d\s().\-]{8,}\d/g)||[]).map(p=>p.trim());
+  const broadPh=(clean.match(/\+?\d[\d\s().\-]{7,}\d/g)||[]).map(p=>p.trim());
+  const phAll=[...new Set(strictPh.length?strictPh:broadPh.slice(0,1))];
+  cv.phone=phAll[0]||'';cv.phone2=phAll[1]||'';
   const li=clean.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/[^\s]+/i);cv.linkedin=li?li[0]:'';
+  // nationality + visa/residency (GCC-relevant; DOB / marital status / age ignored)
+  const nat=clean.match(/nationality\s*[:\-]?\s*([A-Za-z]+)/i)||clean.match(/\b([A-Z][a-z]+)\s+nationality\b/);
+  cv.nationality=nat?tCase(nat[1].trim()):'';
+  const visa=clean.match(/(?:non[-\s]?)?transferable\s+(?:rp|residence permit|iqama|visa)|residence permit|transferable\s+iqama|visa\s+status\s*[:\-]?\s*[A-Za-z ]{3,20}/i);
+  cv.visa=visa?visa[0].replace(/\s{2,}/g,' ').trim():'';
   cv.name=guessName(lines);
-  const sec=sliceSections(lines);
-  if(sec.skills.length)cv.skills=sec.skills.join(', ').replace(/[•\-\*▪◦·]/g,' ').replace(/[,;]+/g,',').replace(/\s{2,}/g,' ').replace(/,\s*,/g,',').replace(/^,|,$/g,'').trim();
-  if(sec.languages.length)cv.langs=sec.languages.join(', ').replace(/[•\-\*▪◦·]/g,'').replace(/\s{2,}/g,' ').trim();
+  if(cv.name){const tb=titleAfterName(lines,cv.name);if(tb)cv.title=tb;}   // role line(s) under the name banner
+  if(!cv.name)cv.name=nameFromContacts(cv.linkedin,cv.email);   // banner unreadable → derive it
+  const secLines=splitGluedHeaders(lines);
+  const sec=sliceSections(secLines);
+  if(sec.skills.length){
+    // Keep each line (categories like "Programming & Modeling: …" are real structure,
+    // not noise) and pull a "Languages: …" line OUT to the languages field, where it
+    // belongs — instead of mashing every line into one comma run. Also drop the
+    // name/title and bare category labels that a sidebar layout can sweep in here.
+    const nameLow=(cv.name||'').toLowerCase();
+    const titleLows=new Set((cv.title||'').split(/[·|]/).map(x=>x.trim().toLowerCase()).filter(Boolean));
+    const kept=[];
+    for(const raw of sec.skills){
+      const line=(raw||'').replace(/[•\*▪◦·‣«»‹›]/g,' ').replace(/(^|[\s,])\+(?=\s)/g,'$1 ').replace(/\s{2,}/g,' ').trim();
+      if(!line)continue;
+      const mLang=line.match(/^\s*(?:languages?|language skills|langues|اللغات)\s*[:\-]\s*(.+)$/i);
+      if(mLang){if(!cv.langs)cv.langs=mLang[1].trim();continue;}
+      const low=line.toLowerCase();
+      if(low===nameLow||titleLows.has(low))continue;                       // name/title leaked from the header
+      if(/^(soft|core|technical|key|other|hard|additional|general|computer|interpersonal)?\s*skills?$/i.test(low))continue;  // bare category divider
+      kept.push(line);
+    }
+    // Stitch skill items wrapped across lines: a sidebar often breaks "Strategic
+    // planning" or "Decision-making" mid-item, where the continuation starts
+    // lower-case. Merge those before parseSkillGroups splits on commas.
+    const merged=[];
+    for(const l of kept){
+      const prev=merged[merged.length-1];
+      if(prev&&/^[a-z]/.test(l)&&!/[:]$/.test(prev))merged[merged.length-1]=prev.replace(/,\s*$/,'')+(/,\s*$/.test(prev)?', ':' ')+l;
+      else merged.push(l);
+    }
+    cv.skills=merged.join('\n').trim();
+  }
+  if(sec.languages.length&&!cv.langs)cv.langs=pairLanguages(sec.languages);
   if(sec.education.length)parseEdu(sec.education);
-  if(sec.experience.length)cv.jobs=extractJobs(sec.experience);
+  // Experience. Primary: the lines under an EXPERIENCE header. But designed CVs
+  // often render that header as low-contrast art OCR can't read — so when the
+  // section is empty, fall back to the "preamble" (everything before the first
+  // recognized header, minus name/contact lines), which is where the jobs sit.
+  let expLines=sec.experience;
+  if(!expLines.length){
+    const firstHdr=secLines.findIndex(isHeader);
+    const pre=(firstHdr>0?secLines.slice(0,firstHdr):[]).filter(l=>
+      l!==cv.name && !/@|linkedin\.com/i.test(l) && !(cv.phone&&l.includes(cv.phone)));
+    expLines=pre;
+  }
+  let jobs=extractJobs(expLines);                       // date-anchored (normal CVs)
+  if(!jobs.length)jobs=extractJobsLoose(expLines);      // dateless: anchor on "Company – Place" + bullets
+  if(jobs.length)cv.jobs=jobs;
+  // newly-captured sections (previously discarded)
+  cv.certifications=bulletizeList(sec.certifications,true).join('\n');
+  cv.training=bulletizeList(sec.training,true).join('\n');
+  cv.achievements=bulletizeList(sec.achievements,false).join('\n');
+  cv.volunteer=bulletizeList(sec.volunteer,false).join('\n');
   if(sec.summary.length){
     const sm=sec.summary.join(' ').replace(/[•\-\*▪◦·‣]/g,' ').replace(/\s{2,}/g,' ').trim();
     if(sm.length>=40)cv.summary=sm;          // keep the candidate's real profile text
   }
+  // Many designed CVs print the profile paragraph right under the name with NO
+  // "Summary" header. When we have a real experience section (so the preamble isn't
+  // the jobs) and no summary yet, treat that leading prose block as the summary.
+  if(!cv.summary&&sec.experience.length){
+    const firstHdr=secLines.findIndex(isHeader);
+    const pre=(firstHdr>0?secLines.slice(0,firstHdr):[]).filter(l=>
+      l!==cv.name && l!==cv.title && !/@|linkedin\.com|^\+?\d/i.test(l) && !(cv.phone&&l.includes(cv.phone)) && !isHeader(l));
+    const sm=pre.join(' ').replace(/\s{2,}/g,' ').trim();
+    if(sm.length>=60)cv.summary=sm;
+  }
   cv.city=guessCity(clean);
+  cv.countryCode=resolveCountryCode(clean,cv.city);
   if(!cv.title)cv.title=(cv.jobs[0]&&cv.jobs[0].title)||guessTitle(lines,cv.name)||'';
+}
+
+// Languages in a sidebar are often STACKED — the language name on one line and its
+// proficiency on the next ("English / Intermediate / French / Intermediate / …").
+// Pair them into "English (Intermediate), French (Intermediate)". Falls back to a
+// plain join when the lines aren't a clean name/level alternation.
+const LANG_LEVELS={native:'Native','mother tongue':'Native',fluent:'Fluent',advanced:'Advanced',proficient:'Proficient',
+  'upper intermediate':'Upper Intermediate',intermediate:'Intermediate','pre intermediate':'Pre-Intermediate',
+  elementary:'Elementary',beginner:'Beginner',basic:'Basic',good:'Good',fair:'Fair',working:'Working',
+  limited:'Limited',conversational:'Conversational',bilingual:'Bilingual'};
+function levelCanon(s){const k=(s||'').toLowerCase().replace(/[^a-z]/g,'');for(const key in LANG_LEVELS)if(key.replace(/[^a-z]/g,'')===k)return LANG_LEVELS[key];return null;}
+function pairLanguages(rawLines){
+  const lines=(rawLines||[]).map(l=>(l||'').replace(/[•\-\*▪◦·‣«»‹›]/g,' ').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+  // If a line already contains both name + level ("English: Fluent"), leave to parseLanguages.
+  if(lines.some(l=>/[:\-(]/.test(l)&&levelCanon(l.split(/[:\-(]/).pop())))
+    return lines.join(', ');
+  const out=[];
+  for(let i=0;i<lines.length;i++){
+    const name=lines[i];
+    if(levelCanon(name))continue;                       // a stray level with no name → skip
+    const lvl=(i+1<lines.length)?levelCanon(lines[i+1]):null;
+    if(lvl){out.push(`${name} (${lvl})`);i++;}
+    else out.push(name);
+  }
+  return out.join(', ');
+}
+
+// Turn a block of section lines into a clean list of items. `splitPipes` also
+// splits a single line that packs several items separated by | • · (common in
+// certifications/training lines); achievements keep their full sentences.
+function bulletizeList(arr,splitPipes){
+  const out=[];
+  for(const raw of (arr||[])){
+    let l=(raw||'').replace(/\s{2,}/g,' ').trim();
+    if(!l)continue;
+    const parts=splitPipes? l.split(/\s*[|•▪◦‣]\s*/) : l.split(/\s*[•▪◦‣]\s*/);
+    for(let p of parts){
+      p=p.replace(/^[•\-\*▪◦·‣–—\s]+/,'').replace(/[;\s]+$/,'').trim();
+      if(p&&p.replace(/\s/g,'').length>=3)out.push(p);
+    }
+  }
+  return out;
+}
+
+/* Resolve a country dialing code, trusting an explicit country name in the CV
+   text when the city is ambiguous (e.g. Tripoli → Lebanon vs Libya). */
+const COUNTRY_CODES_BY_NAME=[
+  [/\b(ksa|saudi arabia|kingdom of saudi arabia)\b/,'+966'],
+  [/\b(uae|united arab emirates)\b/,'+971'],
+  [/\bqatar\b/,'+974'],
+  [/\bkuwait\b/,'+965'],
+  [/\bbahrain\b/,'+973'],
+  [/\boman\b/,'+968'],
+  [/\blebanon\b/,'+961'],
+  [/\bjordan\b/,'+962'],
+  [/\begypt\b/,'+20'],
+  [/\blibya\b/,'+218'],
+  [/\bcyprus\b/,'+357'],
+  [/\bsouth africa\b/,'+27'],
+  [/\b(united kingdom|england)\b/,'+44'],
+];
+const AMBIGUOUS_CITY=new Set(['tripoli']);
+function resolveCountryCode(clean,city){
+  const low=(clean||'').toLowerCase();
+  const cityCode=city?detectCode(city):null;
+  if(city&&AMBIGUOUS_CITY.has(city.toLowerCase().trim())){
+    for(const[re,c]of COUNTRY_CODES_BY_NAME)if(re.test(low))return c;
+  }
+  if(cityCode)return cityCode;
+  for(const[re,c]of COUNTRY_CODES_BY_NAME)if(re.test(low))return c;
+  return null;
 }
 
 // A header is a SHORT, STANDALONE label (e.g. "EMPLOYMENT HISTORY"), matched on
@@ -1341,22 +1848,60 @@ function headerKind(line){
   const t=(line||'').trim();
   if(/[.!?]$/.test(t))return undefined;               // sentences/wrapped tails (e.g. "community.") are never headers
   const norm=t.replace(/&/g,' and ').replace(/[^A-Za-z\s]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
-  if(!norm||norm.length>34)return undefined;          // headings are short labels
-  if(/^(work experience|professional experience|experience|employment(?: history)?|work history|career(?: history| summary)?)$/.test(norm))return'experience';
+  if(!norm||norm.length>40)return undefined;          // headings are short labels
+  // ── exact whole-line headers (most reliable) ──
+  if(/^(work experience|professional experience|professional career|experience|employment(?: history)?|work history|career(?: history| summary)?)$/.test(norm))return'experience';
   if(/^(education(?:al)?(?: background)?|education and training|academic(?: background)?|academic qualifications?|qualifications?)$/.test(norm))return'education';
-  if(/^((?:key |core |technical |professional )?skills|core competenc(?:e|ies|y)|competenc(?:e|ies|y)|expertise|areas of expertise)$/.test(norm))return'skills';
-  if(/^(languages?|language skills)$/.test(norm))return'languages';
-  if(/^(professional summary|career summary|summary|professional profile|personal profile|profile|career objective|objective|about(?: me)?)$/.test(norm))return'summary';
+  // skills — allow the common qualifier prefixes (computer / soft / technical / IT
+  // / digital …) and the compound "technical and soft skills" sidebar label.
+  if(/^((?:key|core|technical|professional|computer|software|it|digital|personal|soft|hard|other|additional|general|interpersonal)\s+)*(skills?|competenc(?:e|ies|y)|expertise|abilities|proficiencies)$/.test(norm.replace(/\band\b/g,' ').replace(/\s+/g,' ').trim())
+     ||/^(expertise|areas of expertise|summary of qualifications)$/.test(norm))return'skills';
+  if(/^(languages?|language skills|languages? spoken)$/.test(norm))return'languages';
+  if(/^(professional summary|career summary|executive summary|summary|executive profile|professional profile|personal profile|profile(?: summary)?|profile|career objective|objective|about(?: me)?|vision)$/.test(norm))return'summary';
+  if(/^(certificat(?:e|es|ions?)|certifications and licen[cs]es|licen[cs]es?|professional certifications?)$/.test(norm))return'certifications';
+  if(/^(trainings?|training and development|courses?|workshops?|trainings? and seminars?)$/.test(norm))return'training';
+  if(/^((?:key |senior |notable )?(?:achievements?|accomplishments?)|awards?(?: and honou?rs)?|honou?rs|senior leadership achievements?)$/.test(norm))return'achievements';
+  if(/^(volunteer(?:ing| work| experience)?|community service|social work)$/.test(norm))return'volunteer';
+  // ── compound "X and Y" headers (from "&"/"and"): only treat as a header when
+  //    the part BEFORE "and" is itself a recognized header (so skill items like
+  //    "Team Leadership & Training" are NOT mistaken for a Training section). ──
+  if(/ and /.test(norm)){
+    const left=norm.split(' and ')[0].trim();
+    const k=headerKind(left);                 // left has no " and " → no infinite recursion
+    if(k&&k!=='other')return k;
+  }
   // recognized-but-irrelevant → ends the current section (content discarded).
   // Bare ambiguous words (community/details/contact/interests/activities) are
   // intentionally excluded — they appear too often as wrapped sentence tails.
-  if(/^(social work|volunteer(?:ing| work| experience)?|community service|certificat(?:e|es|ions?)|certifications and licen[cs]es|licen[cs]es?|trainings?|courses?|awards?(?: and honou?rs)?|honou?rs|achievements?|accomplishments?|references|interests and hobbies|hobbies|extracurricular activities|memberships?|affiliations?|publications?|projects?|personal projects|portfolio|personal (?:details|information|info)|contact (?:details|information)|declaration)$/.test(norm))return'other';
+  if(/^(references?|interests and hobbies|hobbies|extracurricular activities|memberships?|affiliations?|publications?|projects?|personal projects|portfolio|personal (?:details|information|info)|contact(?: details| information| me)?|get in touch|declaration)$/.test(norm))return'other';
+  // sidebar contact/personal labels (designed CVs stack them vertically). Treated as
+  // section boundaries so a label never bleeds into the previous section; their
+  // values are captured by the global email/phone/etc. extractors.
+  if(/^(e ?mail|address|location|phone|mobile|tel|telephone|cell|date of birth|d o b|dob|birth date|nationality|gender|sex|marital status|age|visa|iqama|residence|residency|driving licen[cs]e)$/.test(norm))return'other';
   return undefined;
 }
 function isHeader(line){return headerKind(line)!==undefined;}
 function sectionOf(line){const k=headerKind(line);return(k&&k!=='other')?k:null;}
+// Some PDFs glue a section heading onto its first entry on one line, e.g.
+// "Professional Experience Store Manager – McDonald's | Oct 2024 – Present" or
+// "Education Master of Business Administration …". Split those so the heading is
+// recognized. Guarded so normal sentences ("Experience in managing…") aren't split.
+const GLUED_HDR=/^(professional experience|work experience|employment history|work history|professional summary|career summary|executive summary|executive profile|professional profile|core competencies|areas of expertise|technical skills|key skills|core skills|language skills|professional certifications|certifications and licenses|training and certifications|trainings? and seminars|volunteer experience|education and training|education|certifications?|achievements|languages|skills|experience|summary|training|courses|expertise)\s+(\S.*)$/i;
+function splitGluedHeaders(lines){
+  const out=[];
+  for(const ln of lines){
+    if(headerKind(ln)){out.push(ln);continue;}                // already a clean header
+    const m=ln.match(GLUED_HDR);
+    if(m&&headerKind(m[1])&&/[A-Z0-9]/.test((m[2]||'')[0]||'')&&
+       !/^(of|in|and|to|for|with|the|on|at|is|are|include|including|such|that|which)\b/i.test(m[2])){
+      out.push(m[1]);out.push(m[2]);continue;
+    }
+    out.push(ln);
+  }
+  return out;
+}
 function sliceSections(lines){
-  const out={experience:[],education:[],skills:[],languages:[],summary:[]};
+  const out={experience:[],education:[],skills:[],languages:[],summary:[],certifications:[],training:[],achievements:[],volunteer:[]};
   let cur=null;
   for(const ln of lines){
     if(isHeader(ln)){const sct=sectionOf(ln);cur=out[sct]?sct:null;continue;}
@@ -1366,11 +1911,84 @@ function sliceSections(lines){
 }
 
 function guessName(lines){
-  const re=/^[A-Za-z؀-ۿ][A-Za-z؀-ۿ.'\-]*(?:\s+[A-Za-z؀-ۿ.'\-]+){1,3}$/;
-  for(const ln of lines.slice(0,6)){
-    if(ln.length>40||/\d|@/.test(ln)||isHeader(ln))continue;
-    if(/curriculum vitae|resume|سيرة ذاتية/i.test(ln))continue;
-    if(re.test(ln))return ln;
+  const re=/^[A-Za-z؀-ۿ][A-Za-z؀-ۿ.'’\-]*(?:\s+[A-Za-z؀-ۿ.'’\-]+){1,3}$/;
+  const norm=l=>(l||'').replace(/\s*-\s*/g,'-').replace(/\s{2,}/g,' ').trim();   // join "Al - Kakhi" → "Al-Kakhi"
+  const bad=l=>!l||l.length>40||/\d|@/.test(l)||/curriculum vitae|resume|سيرة ذاتية/i.test(l);
+  // A real name — not a sentence fragment that merely matches the shape. Designed
+  // CVs often hide the name in a low-contrast banner OCR drops, so the first
+  // "name-shaped" line can actually be a stray clause like "consistent launches."
+  const looksLikeName=ln=>{
+    if(!re.test(ln))return false;
+    if(!/^[A-Z؀-ۿ]/.test(ln))return false;            // names start capitalized
+    if(/[a-z]{2,}\.$/.test(ln))return false;          // "…launches." → a sentence tail, not a name
+    if(ln.split(/\s+/).some(w=>/^(and|the|of|to|in|for|with|at|on|a|an|or)$/i.test(w)))return false;
+    return true;
+  };
+  // The name sits at the very top — only consider lines BEFORE the first section header.
+  let top=[];
+  for(const raw of lines.slice(0,10)){if(isHeader(raw))break;top.push(raw);}
+  if(!top.length)top=lines.slice(0,3);
+  // pass 1 — a clean standalone name line at the top
+  for(const raw of top){const ln=norm(raw);if(bad(ln)||isHeader(ln))continue;if(looksLikeName(ln))return ln;}
+  // pass 2 — designed CVs print the name as an ALL-CAPS banner that, after a
+  // sidebar column, can land deeper in the text (e.g. the contact column is
+  // emitted first, then "AMAL WAHBI" at the top of the main column). Take the
+  // first all-caps, 2–4 word, comma-free, alphabetic, non-header line.
+  const isCapsName=raw=>{
+    const t=norm(raw);
+    if(bad(t)||isHeader(t)||/,/.test(t))return false;
+    if(!/^[A-Z؀-ۿ][A-Z؀-ۿ.'’\-]*(?:\s+[A-Z؀-ۿ.'’\-]+){1,3}$/.test(t))return false;   // every word upper-case
+    if(/\b(CV|RESUME|CURRICULUM|VITAE|PROFILE|REFERENCES?)\b/.test(t))return false;
+    return true;
+  };
+  for(const raw of lines.slice(0,50)){if(isCapsName(raw))return norm(raw);}
+  // pass 3 — first/last name stacked on two consecutive single-word lines
+  const wordRe=/^[A-Z][A-Za-z'’\-]{1,}$/;
+  for(let i=0;i<top.length-1;i++){
+    const a=norm(top[i]),b=norm(top[i+1]);
+    if(bad(a)||bad(b))continue;
+    if(wordRe.test(a)&&wordRe.test(b))return a+' '+b;
+  }
+  return'';
+}
+// The job title(s) printed directly under the name banner ("Marketing Coordinator
+// / Business Operations Specialist"). Collect up to two short, non-header,
+// non-contact role lines that follow the name; join with " · ".
+function titleAfterName(lines,name){
+  if(!name)return'';
+  const low=name.toLowerCase();
+  const idx=lines.findIndex(l=>(l||'').replace(/\s{2,}/g,' ').trim().toLowerCase()===low);
+  if(idx<0)return'';
+  const out=[];
+  for(let i=idx+1;i<Math.min(lines.length,idx+4);i++){
+    const t=(lines[i]||'').trim();
+    if(!t||isHeader(t))break;
+    if(/\d|@|linkedin\.com|\+\d/i.test(t))break;     // contact / date line
+    if(/[.!?]$/.test(t)||t.split(/\s+/).length>6)break;   // sentence / too long for a role
+    out.push(t);
+    if(out.length>=2)break;
+  }
+  return out.join(' · ');
+}
+// Fallback when the name banner isn't in the text (e.g. white-on-colour header an
+// OCR pass can't read): reconstruct it from the LinkedIn slug or a separated email
+// local-part. "linkedin.com/in/maria-el-chikhani-12345" → "Maria El Chikhani".
+function nameFromContacts(linkedin,email){
+  const titleize=parts=>parts.filter(Boolean).map(p=>p.charAt(0).toUpperCase()+p.slice(1).toLowerCase()).join(' ');
+  if(linkedin){
+    const m=linkedin.match(/\/in\/([^\/?#\s]+)/i);
+    if(m){
+      const slug=m[1].replace(/-?\d+$/,'');         // drop the trailing numeric id
+      const parts=slug.split('-').filter(p=>/^[a-z؀-ۿ'’]{2,}$/i.test(p));
+      if(parts.length>=2&&parts.length<=4)return titleize(parts);
+    }
+  }
+  if(email){
+    const lp=(email.split('@')[0]||'');
+    if(/[._-]/.test(lp)){                            // only when there's a real separator
+      const parts=lp.split(/[._-]+/).filter(p=>/^[a-z]{2,}$/i.test(p));
+      if(parts.length>=2&&parts.length<=4)return titleize(parts);
+    }
   }
   return'';
 }
@@ -1381,10 +1999,12 @@ function guessTitle(lines,name){
 }
 function guessCity(clean){
   const low=clean.toLowerCase();
+  let best='',bestIdx=Infinity;
   for(const city of Object.keys(CITY_CODES)){
-    if(new RegExp('\\b'+city.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(low))return tCase(city);
+    const m=low.match(new RegExp('\\b'+city.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b'));
+    if(m&&m.index<bestIdx){bestIdx=m.index;best=tCase(city);}   // earliest mention ≈ contact/header city
   }
-  return'';
+  return best;
 }
 
 // Robust job extractor. Handles the most common real-world layouts:
@@ -1397,24 +2017,32 @@ function extractJobs(lines){
   const jobs=[];
   const MONTHS='jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
   const presentRe=/present|current|ongoing|now|حتى الآن|till date|to date/i;
-  const monthYear=new RegExp('((?:'+MONTHS+')[a-z]*\\.?\\s*)?((?:19|20)\\d{2})','i');
+  // A single date token: present/current, or [Month ][MM/ or MM.]YYYY, or bare YYYY.
+  // Supports numeric "10/2024" / "02-2023" dates as well as "Oct 2024" and "2024".
+  const DTOK='(?:present|current|ongoing|(?:(?:'+MONTHS+')[a-z]*\\.?\\s*)?(?:\\d{1,2}\\s*[\\/.]\\s*)?(?:19|20)\\d{2})';
+  const monthYear=new RegExp('(?:(?:'+MONTHS+')[a-z]*\\.?\\s*)?(?:\\d{1,2}\\s*[\\/.]\\s*)?(?:19|20)\\d{2}','i');
   const yearRe=/\b(19|20)\d{2}\b/;
   const isBullet=l=>/^[•\*▪◦·‣]\s?|^[-–—]\s+/.test(l);
   // A genuine date / date-range line: either a real "X – Y" range, or a line
   // that is essentially nothing but a single date token. NOT a prose line that
   // merely happens to contain a year.
-  const RANGE_RE=/(present|current|(?:19|20)\d{2})\s*(?:–|—|-|to|till|until)\s*(present|current|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*(?:19|20)?\d{0,4}|(?:19|20)\d{2})/i;
-  const SINGLE_RE=/^\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)\d{2}\s*(?:–|—|-)?\s*(?:present|current)?\s*$/i;
+  const RANGE_RE=new RegExp(DTOK+'(?:\\s*(?:–|—|-|to|till|until)\\s*)+'+DTOK,'i');   // allow "May 2026 – till Present"
+  const SINGLE_RE=new RegExp('^\\s*'+DTOK+'(?:\\s*(?:–|—|-)\\s*(?:present|current))?\\s*$','i');
   function isDateLine(l){
+    if(RANGE_RE.test(l))return true;          // a real date RANGE anchors a job even on a long header line
     if(l.length>46)return false;
-    return RANGE_RE.test(l)||SINGLE_RE.test(l);
+    return SINGLE_RE.test(l);
   }
   function rangeDates(l){
     const pick=seg=>{if(presentRe.test(seg))return'Present';const m=seg.match(monthYear);return m?m[0].replace(/\s+/g,' ').trim():'';};
-    const parts=l.split(/\s*(?:–|—|-|to|until|till)\s*/i).map(x=>x.trim()).filter(Boolean);
+    // Isolate the explicit "date – date" span FIRST so a dash inside the title
+    // ("Teaching Assistant – CHEN 201 … Jan 2026 – May 2026") can't hijack the split.
+    const rm=l.match(RANGE_RE);
+    const seg=rm?rm[0]:l;
+    const parts=seg.split(/\s*(?:–|—|-|to|until|till)\s*/i).map(x=>x.trim()).filter(Boolean);
     if(parts.length>=2)return{from:pick(parts[0]),to:pick(parts[parts.length-1])};
-    const all=l.match(new RegExp(monthYear.source,'ig'))||[];
-    return{from:all[0]?all[0].trim():'',to:presentRe.test(l)?'Present':(all[1]?all[1].trim():'')};
+    const all=seg.match(new RegExp(monthYear.source,'ig'))||[];
+    return{from:all[0]?all[0].trim():'',to:presentRe.test(seg)?'Present':(all[1]?all[1].trim():'')};
   }
   function parseHeader(text){
     text=(text||'').replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
@@ -1423,62 +2051,235 @@ function extractJobs(lines){
     const at=text.split(/\s+(?:at|@|،|\|)\s+/i);
     if(at.length>=2){title=at[0];company=at.slice(1).join(' ');}
     else{const c=text.split(/\s*[,\-–—|]\s*/);title=c[0]||text;company=c[1]||'';}
-    company=company.replace(/\s*,\s*[^,]+$/,'').trim();   // drop trailing ", City"
-    title=title.replace(/^[,\-–—\s]+|[,\-–—\s]+$/g,'').trim();
+    company=company.replace(/\s*,\s*[^,]+$/,'').replace(/^[|,\-–—\s]+|[|,\-–—\s]+$/g,'').trim();   // drop trailing ", City" + stray separators
+    title=title.replace(/^[|,\-–—\s]+|[|,\-–—\s]+$/g,'').trim();
     return{title,company};
   }
   function headerFromDateLine(l){
-    return parseHeader(l.replace(new RegExp(yearRe.source,'g'),' ')
-      .replace(new RegExp('\\b('+MONTHS+')[a-z]*\\.?','ig'),' ')
+    const stripped=l.replace(new RegExp(DTOK,'ig'),' ')
       .replace(new RegExp(presentRe.source,'ig'),' ')
-      .replace(/[–—\-]+/g,' ').replace(/\s+/g,' ').trim());
+      .replace(/\b(?:till|until|to|since|from)\b/ig,' ')   // connector words ("May 2026 – till Present")
+      .replace(/\d{1,2}\s*[\/.]\s*/g,' ')        // stray "10/" remnants from MM/YYYY
+      .replace(/[–—\-]+/g,' ').replace(/\s{2,}/g,' ').trim();
+    if(stripped.replace(/[^A-Za-z]/g,'').length<2)return{title:'',company:''};  // only dates → no inline header
+    return parseHeader(stripped);
   }
+  // Role lexicon + location matcher — to split a "title-first" header block where
+  // the role title sits on its own line above a "Company City, Country" line.
+  const ROLE_RE=/\b(manager|supervisor|director|head|chef|waitress|waiter|agent|coordinator|leader|officer|assistant|consultant|engineer|analyst|executive|specialist|administrator|receptionist|cashier|host|hostess|barista|bartender|sommelier|captain|steward|stewardess|attendant|representative|associate|clerk|technician|designer|developer|accountant|teacher|trainer|nurse|driver|operator|planner|controller|secretary|intern|apprentice|foreman|owner|founder|partner|president|principal|lead|architect|writer|editor|photographer|videographer|marketer|recruiter|buyer|merchandiser|estimator|surveyor|paralegal|pharmacist|therapist|dietitian|waitstaff)\b/i;
+  const LOC_WORDS=[...Object.keys(CITY_CODES),'ksa','uae','lebanon','saudi arabia','qatar','kuwait','bahrain','oman','jordan','egypt','syria','iraq','libya','tunisia','morocco','algeria','dbayeh','faqra','jounieh','zahle','sidon','tyre','byblos','achrafieh','hamra'];
+  const LOC_RE=new RegExp('\\b('+LOC_WORDS.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')\\b','i');
+  const deSpace=s=>(s||'').replace(/\b((?:[A-Za-z] ){2,}[A-Za-z])\b/g,m=>m.replace(/ /g,''));  // "B e i r u t" → "Beirut"
+  const stripLoc=s=>{                          // cut a "Company City, Country" tail → just the company
+    s=deSpace((s||'').replace(/\s+/g,' ').trim());
+    const m=s.match(LOC_RE);
+    if(m&&m.index>2)s=s.slice(0,m.index);
+    return s.replace(/[\s,;:|–—-]+$/,'').replace(/^[\s,;:|–—-]+/,'').trim();
+  };
 
-  // Buffer of consecutive non-bullet prose lines. When a date line arrives, the
-  // LAST buffered line is the job header and the earlier ones are wrapped tails
-  // of the previous bullet; a bullet flushes the whole buffer into the prior bullet.
-  let cur=null,buf=[];
-  const push=()=>{if(cur&&(cur.title||cur.company||cur.duties.length))jobs.push(cur);};
-  const appendCont=arr=>{if(cur&&cur.duties.length&&arr.length)cur.duties[cur.duties.length-1]=(cur.duties[cur.duties.length-1]+' '+arr.join(' ')).replace(/\s+/g,' ').trim();};
+  // A short Title-Case label that groups duties (e.g. "Treasury & Cash Management").
+  // Such labels are dropped from duties so they don't pollute real achievements.
+  const isSubHeading=l=>{
+    if(!l||/[.!?,;]$/.test(l)||!/^[A-Z0-9]/.test(l))return false;
+    const w=l.split(/\s+/);if(w.length>6)return false;
+    const caps=w.filter(x=>/^[A-Z]/.test(x)).length;
+    return /&/.test(l)||caps>=Math.ceil(w.length*0.6);
+  };
 
-  for(const raw of lines){
-    const ln=raw.trim();if(!ln)continue;
-    if(!isBullet(ln)&&isDateLine(ln)){
-      // —— date line → new job boundary ——
-      const inlineHeader=headerFromDateLine(ln);
-      let headerText='';
-      if(inlineHeader.title||inlineHeader.company){appendCont(buf);}        // header shared on the date line
-      else if(buf.length){headerText=buf[buf.length-1];appendCont(buf.slice(0,-1));}
-      buf=[];
-      push();
-      const{from,to}=rangeDates(ln);
-      cur={company:'',title:'',from,to,duties:[]};
-      const h=(inlineHeader.title||inlineHeader.company)?inlineHeader:parseHeader(headerText);
-      cur.title=h.title;cur.company=h.company;
-    }else if(isBullet(ln)){
-      appendCont(buf);buf=[];                                               // buffered prose was a wrapped tail
-      const txt=ln.replace(/^[•\-\*▪◦·‣\s]+/,'').trim();
-      if(cur&&txt)cur.duties.push(txt);
-    }else{
-      buf.push(ln);                                                         // prose: header or wrapped tail (resolved later)
+  // Words that mark a wrapped line: a duty starting with an action verb is never a
+  // job header, and a line ending in a conjunction/preposition is mid-sentence.
+  const DUTY_VERB=/^(managed|oversaw|present|conceiv|develop|led|creat|mentor|handl|coordinat|supervis|design|implement|deliver|achiev|increas|reduc|built|build|launch|maintain|provid|assist|prepar|organ|ensur|improv|conduct|perform|responsib|work|collaborat|drove|spearhead|execut|establish|generat|negotiat|train|monitor|analy|process|operat|administ|direct|plan|produc|support|lead|grew|grow)/i;
+  const FUNC_END=/\b(and|to|the|a|an|or|of|with|for|using|across|while|that|which|in|on|at|as|by|from|into|until|than|but)$/i;
+  // A line that introduces a job ("Marketing Manager, watan play", "Title at Co").
+  // NOT a duty sentence and NOT a wrapped fragment.
+  const looksJobHeader=raw=>{
+    const l=(raw||'').replace(/^[•\*▪◦·‣\s]+/,'').trim();
+    if(!l||isBullet(l)||/[.!?]$/.test(l)||l.length>70||!/^[A-Z0-9]/.test(l))return false;
+    if((DUTY_VERB.test(l)&&!ROLE_RE.test(l))||FUNC_END.test(l))return false;   // role words ("Assistant","Director") aren't duty verbs
+    return /\s(?:at|@)\s|,|\s[–—|]\s|\s-\s/.test(l)||l.split(/\s+/).length<=5;
+  };
+
+  // Index-based pass, in two stages. First locate each job's header relative to its
+  // date line — inline on it, on the line BELOW it (date-first layout) or the line
+  // ABOVE it (title-first layout). Then collect the duties between consecutive jobs
+  // and stitch line-wrapped sentences back together.
+  const L=lines.map(x=>x.trim()).filter(Boolean);
+  const dateAt=L.map((l,i)=>(!isBullet(l)&&isDateLine(l))?i:-1).filter(i=>i>=0);
+  if(!dateAt.length)return[];
+  const anchors=dateAt.map(di=>{
+    const {from,to}=rangeDates(L[di]);
+    let h=headerFromDateLine(L[di]),pos='inline',hIdx=di;   // header on the date line itself?
+    if(!h.title&&!h.company){                               // …else in the header block directly ABOVE
+      // Walk up collecting the contiguous header lines (title / company / optional
+      // tagline). A title-first CV stacks "Area Manager" over "Jones The Grocer KSA
+      // Riyadh, KSA" over the date. Stop at a duty (starts with an action verb / ends
+      // a sentence) so a duty above a date-first job is never mistaken for a header.
+      const block=[];
+      for(let j=di-1;j>=0&&block.length<4;j--){
+        const l=L[j];
+        if(!l||dateAt.includes(j)||isBullet(l)||isHeader(l))break;
+        if(/[.!?:]$/.test(l)||l.length>85||(DUTY_VERB.test(l)&&!ROLE_RE.test(l)))break;
+        block.unshift(l);
+      }
+      if(block.length){
+        const ri=block.findIndex(l=>ROLE_RE.test(l));        // the role-title line
+        if(ri>=0){
+          const roleLine=deSpace(block[ri].replace(/\s{2,}/g,' ').trim());
+          const others=block.filter((_,i)=>i!==ri);
+          const compLine=others.find(l=>LOC_RE.test(l))||others.find(Boolean)||'';
+          // role line carries its own "Title – Company" and there's no separate
+          // company line → split it; otherwise the company is the neighbouring line.
+          if(!compLine&&/\s(?:at|@)\s|[,–—|]/.test(roleLine))h=parseHeader(roleLine);
+          else h={title:roleLine,company:stripLoc(compLine)};
+          pos='above';hIdx=di-block.length;
+        }else if(looksJobHeader(block[block.length-1])){
+          h=parseHeader(block[block.length-1]);pos='above';hIdx=di-block.length;
+        }
+      }
     }
+    if(!h.title&&!h.company){                               // …else on the line directly BELOW (date-first)
+      const bi=di+1;
+      if(bi<L.length&&!dateAt.includes(bi)&&looksJobHeader(L[bi])){h=parseHeader(L[bi]);pos='below';hIdx=bi;}
+    }
+    if(!h.title&&!h.company)pos='none';
+    return {di,from,to,h,pos,hIdx};
+  });
+  for(let k=0;k<anchors.length;k++){
+    const a=anchors[k];
+    const dutyStart=(a.pos==='below')?a.di+2:a.di+1;        // skip the header line when it sits below the date
+    // a job ends where the next one begins — at its header (if above its date) or its date line
+    const end=(k+1<anchors.length)?(anchors[k+1].pos==='above'?anchors[k+1].hIdx:anchors[k+1].di):L.length;
+    const raw=[];
+    for(let j=dutyStart;j<end;j++){
+      const l=L[j];
+      if(!l||isSubHeading(l)||(!isBullet(l)&&isDateLine(l)))continue;
+      const t=l.replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
+      if(t&&t.replace(/\s/g,'').length>=2)raw.push(t);
+    }
+    // stitch wrapped lines: a continuation either starts lower-case or follows a
+    // line that ended on a conjunction/preposition (and isn't already a sentence).
+    const duties=[];
+    for(const d of raw){
+      const prev=duties[duties.length-1];
+      if(prev&&!/[.!?]$/.test(prev)&&(/^[a-z]/.test(d)||FUNC_END.test(prev)))duties[duties.length-1]=prev+' '+d;
+      else duties.push(d);
+    }
+    if(a.h.title||a.h.company||duties.length)jobs.push({company:a.h.company||'',title:a.h.title||'',from:a.from,to:a.to,duties});
   }
-  appendCont(buf);
-  push();
-  return jobs.slice(0,8);
+  return jobs.slice(0,14);
 }
 
-function parseEdu(lines){
-  const levelRe=/(ph\.?\s?d|doctorate|master'?s?|m\.?sc|m\.?a\b|mba|bachelor'?s?|b\.?sc|b\.?a\b|diploma|associate|baccalaureate|high\s*school|secondary|primary)/i;
-  const joined=lines.join(' ');
-  cv.eduYear=(joined.match(/\b(19|20)\d{2}\b/)||[''])[0];
-  const lvlLine=lines.find(l=>levelRe.test(l));
-  cv.eduLevel=lvlLine?lvlLine.match(levelRe)[0].replace(/\s{2,}/g,' ').trim():(lines[0]||'');
-  const instLine=lines.find(l=>/university|college|institute|school|academy|polytechnic|جامعة|كلية|معهد/i.test(l));
-  cv.eduInst=instLine?instLine.replace(/\b(19|20)\d{2}\b/g,'').replace(/[|]/g,' ').replace(/\s{2,}/g,' ').trim():'';
-  if(lvlLine){
-    cv.eduField=lvlLine.replace(levelRe,'').replace(/\b(19|20)\d{2}\b/g,'').replace(/\b(in|of|degree)\b/gi,'').replace(/[|,–—\-]+/g,' ').replace(/\s{2,}/g,' ').trim();
+// Dateless fallback for CVs whose roles carry NO date range (or whose dates were
+// rendered as art OCR couldn't read). Anchors each job on a header-style line —
+// capitalized, short, not a sentence, carrying a "Company – Place" / "Title at
+// Company" separator — and collects the lines beneath it as duties. A job is only
+// kept once it has at least one duty, so taglines and stray labels don't become
+// empty jobs.
+function extractJobsLoose(lines){
+  const isBullet=l=>/^[•\*▪◦·‣«»+]\s?|^[-–—]\s+/.test(l);
+  const looksHeader=l=>{
+    if(isBullet(l)||/[.!?]$/.test(l)||l.length>70||!/^[A-Z]/.test(l))return false;
+    return /\s[–—-]\s/.test(l)||/\bat\b/.test(l);     // "Company – Place" or "Title at Company"
+  };
+  const jobs=[];let cur=null;
+  for(const raw of (lines||[])){
+    const l=(raw||'').trim();if(!l)continue;
+    if(looksHeader(l)){
+      if(cur)jobs.push(cur);
+      const at=l.split(/\s+(?:at|@)\s+/i);
+      let title='',company=l;
+      if(at.length>=2){title=at[0].trim();company=at.slice(1).join(' ').trim();}
+      else{const parts=l.split(/\s+[–—-]\s+/);company=(parts[0]||l).trim();}
+      cur={company,title,from:'',to:'',duties:[]};
+    }else if(cur){
+      const t=l.replace(/^[•\*▪◦·‣«»+\-–—\s]+/,'').replace(/\s{2,}/g,' ').trim();
+      if(t&&t.replace(/\s/g,'').length>=3)cur.duties.push(t);
+    }
   }
+  if(cur)jobs.push(cur);
+  return jobs.filter(j=>j.duties.length).slice(0,8);
+}
+
+const EDU_LEVEL_RE=/(ph\.?\s?d|doctorate|master[''`]?s?|m\.?sc|mba|m\.?a\b|bachelor[''`]?s?(?:\s+degree)?|b\.?sc|b\.?a\b|b\.?eng|diploma|associate|baccalaureate|high\s*school|secondary|nqf|bt\s?\d|ts\s?\d|degree)/i;
+// Institution keyword as a WHOLE word, so "Highschool"/"Internship" don't false-match.
+const EDU_INST_RE=/\b(universit\w*|college|institute|institut|polytechnic|academy|faculty)\b|\bschool\b|جامعة|كلية|معهد/i;
+const EDU_LOC_RE=/\b(lebanon|saudi arabia|ksa|uae|united arab emirates|qatar|kuwait|bahrain|oman|jordan|egypt|syria|iraq|france|germany|spain|italy|usa|uk|united kingdom|canada|turkey|cyprus|india|pakistan)\b/i;
+const EDU_DATE_RE=/(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)\d{2}\s*(?:[–—-]|to|till|until)\s*(?:present|current|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)\d{2})/i;
+const EDU_YEAR_RE=/\b(19|20)\d{2}\b/;
+// Parse the education block into a LIST of entries. A single entry can be laid out
+// degree-first ("BSc / Computer Science / MIT / 2018") OR institution-first ("AUB |
+// Beirut … 2022\n• Bachelor of …"); both occur in real CVs. So we DON'T split on the
+// degree keyword (that wrongly tore a school away from its degree). Instead a new
+// entry begins only once the current one ALREADY has both an institution and a
+// degree and we meet another — the natural boundary between two schools.
+function parseEduList(lines){
+  let clean=(lines||[]).map(l=>(l||'').replace(/^[•\-\*▪◦·‣+«»\s]+/,'').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+  if(!clean.length)return[];
+  // Stitch a wrapped institution/degree name: a line ending on a conjunction,
+  // "&" or comma continues onto the next ("University of Science and" +
+  // "Technology (UST), Sudan – 2014" → one institution line).
+  const EDU_WRAP=/(\b(?:and|of|the|for|de|del|la|las|el)$)|[&,]$/i;
+  clean=clean.reduce((acc,l)=>{
+    const prev=acc[acc.length-1];
+    if(prev&&EDU_WRAP.test(prev)&&!/[.!?]$/.test(prev))acc[acc.length-1]=prev+' '+l;
+    else acc.push(l);
+    return acc;
+  },[]);
+  const hasInst=l=>EDU_INST_RE.test(l)&&!/high\s*school|highschool/i.test(l);
+  // A degree line carries a level keyword but is NOT itself an institution — so
+  // "Dekwaneh Secondary School" (institution containing "secondary") is not treated
+  // as a degree, and doesn't wrongly split an entry.
+  const hasDeg=l=>EDU_LEVEL_RE.test(l)&&!hasInst(l);
+  const isYearLine=l=>EDU_DATE_RE.test(l)||(EDU_YEAR_RE.test(l)&&l.replace(/[^A-Za-z]/g,'').length<=4);  // "2005 - 2008" / "2014"
+  const groups=[];let g=null;
+  for(const l of clean){
+    // A new entry begins once the current one is "complete" — it already carries a
+    // year range (entries here are [qualification / institution / years] blocks) OR
+    // it already has both an institution and a degree and we meet another.
+    if(g&&(g.year||(hasInst(l)&&g.inst)||(hasDeg(l)&&g.deg))){g=null;}
+    if(!g){g={lines:[],inst:false,deg:false,year:false};groups.push(g);}
+    g.lines.push(l);
+    if(hasInst(l))g.inst=true;
+    if(hasDeg(l))g.deg=true;
+    if(isYearLine(l))g.year=true;
+  }
+  const stripA=s=>(s||'').replace(/graduat\w*\s*:?/ig,'').replace(/,\s*,+/g,',')
+    .replace(/\s{2,}/g,' ').replace(/^[–—\-,:|()\s]+|[–—\-,:|\s]+$/g,'').trim();
+  // Remove the date range (and stray years) from the WHOLE line FIRST, so the
+  // dash-splitter below can't tear "Sep.2022 – May 2027" into a stray "May" atom.
+  const atomize=l=>(l||'').replace(EDU_DATE_RE,' ').replace(/\b(19|20)\d{2}\b/g,' ')
+    .split(/\s*\|\s*|\s+[–—]\s+|\s+-\s+|\s{2,}/).map(stripA).filter(Boolean);
+  const isLoc=a=>EDU_LOC_RE.test(a)||/^[A-Z][a-z]+,\s*[A-Z]/.test(a);
+  const entries=groups.map(grp=>{
+    const joined=grp.lines.join(' | ');
+    const year=(joined.match(EDU_DATE_RE)||joined.match(EDU_YEAR_RE)||[''])[0].replace(/\s+/g,' ').trim();
+    const instLine=grp.lines.find(hasInst)||'';
+    // The qualification line: a recognized degree keyword, else the first non-inst,
+    // non-year line ("Tourism Technical superior" carries no keyword but IS the level).
+    const degLine =grp.lines.find(hasDeg)||grp.lines.find(l=>l!==instLine&&!isYearLine(l))||'';
+    const instAtoms=atomize(instLine), degAtoms=atomize(degLine);
+    const inst=instAtoms.find(a=>EDU_INST_RE.test(a)&&!/high\s*school|highschool/i.test(a))||instLine||'';
+    // level = the cleanest degree phrase available
+    const level=(degAtoms.find(a=>EDU_LEVEL_RE.test(a))||degLine||instAtoms.find(a=>EDU_LEVEL_RE.test(a))||'').trim();
+    // field = subject / campus / honour, from the inst & degree lines plus any SHORT
+    // standalone label line — never the long achievement sentences (those run long
+    // or end in punctuation and are excluded).
+    const extra=grp.lines.filter(l=>l!==instLine&&l!==degLine&&!/[.!?]$/.test(l)&&l.split(/\s+/).length<=5);
+    const pool=[...instAtoms,...degAtoms,...extra.flatMap(atomize)];
+    const seen=new Set(),field=[];
+    for(const a of pool){
+      if(!a||a===inst||a===level||isLoc(a)||EDU_DATE_RE.test(a)||/^(19|20)\d{2}$/.test(a))continue;
+      if(EDU_INST_RE.test(a)||a.split(/\s+/).length>8)continue;
+      const k=a.toLowerCase();if(seen.has(k))continue;seen.add(k);field.push(a);
+    }
+    return{level,field:field.join(', '),inst,year};
+  }).filter(e=>e.level||e.inst);
+  return entries;
+}
+function parseEdu(lines){
+  const list=parseEduList(lines);
+  cv.eduList=list;
+  if(list.length){const e=list[0];cv.eduLevel=e.level;cv.eduField=e.field;cv.eduInst=e.inst;cv.eduYear=e.year;}
 }
 
 async function finalizeUpload(){
@@ -1535,6 +2336,19 @@ function efJobCard(job){
   card.appendChild(efField('',st.efDuties,(job.duties||[]).join('\n'),{cls:'j-duties',area:true}));
   return card;
 }
+function efEduCard(e){
+  const st=s();
+  const card=document.createElement('div');card.className='ef-job ef-edu-card';
+  const rm=document.createElement('button');rm.type='button';rm.className='rm';rm.textContent=st.efRemove;
+  rm.onclick=()=>card.remove();card.appendChild(rm);
+  card.appendChild(efField('',st.efLevel,e.level,{cls:'e-level'}));
+  card.appendChild(efField('',st.efField,e.field,{cls:'e-field'}));
+  const row=document.createElement('div');row.className='ef-row';
+  row.appendChild(efField('',st.efInst,e.inst,{cls:'e-inst'}));
+  row.appendChild(efField('',st.efYear,e.year,{cls:'e-year'}));
+  card.appendChild(row);
+  return card;
+}
 function openEditForm(){
   const st=s();
   document.getElementById('edit-title').textContent=st.editTitle;
@@ -1548,7 +2362,10 @@ function openEditForm(){
     efField('ef-city',st.efCity,cv.city),
     efField('ef-email',st.efEmail,cv.email),
     efField('ef-phone',st.efPhone,cv.phone),
+    efField('ef-phone2',st.efPhone+' 2',cv.phone2),
     efField('ef-linkedin',st.efLinkedin,cv.linkedin),
+    efField('ef-nationality',st.efNationality,cv.nationality),
+    efField('ef-visa',st.efVisa,cv.visa),
   ]));
 
   const expG=efGroup(st.efExp,[efField('ef-years',st.efYears,cv.yearsExp)]);
@@ -1556,16 +2373,24 @@ function openEditForm(){
   (cv.jobs.length?cv.jobs:[{company:'',title:'',from:'',to:'',duties:[]}]).forEach(j=>jobsWrap.appendChild(efJobCard(j)));
   expG.appendChild(jobsWrap);
   const add=document.createElement('button');add.type='button';add.className='ef-add';add.textContent=st.efAddJob;
-  add.onclick=()=>{if(jobsWrap.children.length<3)jobsWrap.appendChild(efJobCard({company:'',title:'',from:'',to:'',duties:[]}));};
+  add.onclick=()=>{if(jobsWrap.children.length<8)jobsWrap.appendChild(efJobCard({company:'',title:'',from:'',to:'',duties:[]}));};
   expG.appendChild(add);body.appendChild(expG);
 
-  body.appendChild(efGroup(st.efEducation,[
-    efField('ef-level',st.efLevel,cv.eduLevel),
-    efField('ef-field',st.efField,cv.eduField),
-    efField('ef-inst',st.efInst,cv.eduInst),
-    efField('ef-year',st.efYear,cv.eduYear),
-  ]));
+  // Education — repeatable list (people often have 2–3 degrees)
+  const eduG=efGroup(st.efEducation,[]);
+  const eduWrap=document.createElement('div');eduWrap.id='ef-edu';
+  const eduSrc=(cv.eduList&&cv.eduList.length)?cv.eduList:[{level:cv.eduLevel,field:cv.eduField,inst:cv.eduInst,year:cv.eduYear}];
+  eduSrc.forEach(e=>eduWrap.appendChild(efEduCard(e)));
+  eduG.appendChild(eduWrap);
+  const addE=document.createElement('button');addE.type='button';addE.className='ef-add';addE.textContent='➕ '+st.efEducation;
+  addE.onclick=()=>{if(eduWrap.children.length<5)eduWrap.appendChild(efEduCard({level:'',field:'',inst:'',year:''}));};
+  eduG.appendChild(addE);body.appendChild(eduG);
+
   body.appendChild(efGroup(st.efSkills,[efField('ef-skills','',cv.skills,{area:true})]));
+  body.appendChild(efGroup(st.secCert,[efField('ef-certs','',cv.certifications,{area:true,ph:st.efCerts})]));
+  body.appendChild(efGroup(st.secTrain,[efField('ef-training','',cv.training,{area:true,ph:st.efTraining})]));
+  body.appendChild(efGroup(st.secAch,[efField('ef-ach','',cv.achievements,{area:true,ph:st.efAch})]));
+  body.appendChild(efGroup(st.secVol,[efField('ef-vol','',cv.volunteer,{area:true,ph:st.efVol})]));
   body.appendChild(efGroup(st.efLangs,[efField('ef-langs','',cv.langs)]));
 
   document.getElementById('edit-overlay').classList.add('open');
@@ -1574,15 +2399,22 @@ function closeEdit(){document.getElementById('edit-overlay').classList.remove('o
 async function applyEdit(){
   const v=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
   cv.name=v('ef-name');cv.title=v('ef-title');cv.city=v('ef-city');
-  cv.email=v('ef-email');cv.phone=v('ef-phone');cv.linkedin=v('ef-linkedin');
+  cv.email=v('ef-email');cv.phone=v('ef-phone');cv.phone2=v('ef-phone2');cv.linkedin=v('ef-linkedin');
+  cv.nationality=v('ef-nationality');cv.visa=v('ef-visa');
   cv.yearsExp=v('ef-years')||'several years';
   cv.jobs=[...document.querySelectorAll('#ef-jobs .ef-job')].map(card=>{
     const g=cls=>{const e=card.querySelector('.'+cls);return e?e.value.trim():'';};
     return{company:g('j-company'),title:g('j-title'),from:g('j-from'),to:g('j-to'),
       duties:g('j-duties').split('\n').map(d=>d.trim()).filter(Boolean)};
   }).filter(j=>j.title||j.company||j.duties.length);
-  cv.eduLevel=v('ef-level');cv.eduField=v('ef-field');cv.eduInst=v('ef-inst');cv.eduYear=v('ef-year');
+  cv.eduList=[...document.querySelectorAll('#ef-edu .ef-edu-card')].map(card=>{
+    const g=cls=>{const e=card.querySelector('.'+cls);return e?e.value.trim():'';};
+    return{level:g('e-level'),field:g('e-field'),inst:g('e-inst'),year:g('e-year')};
+  }).filter(e=>e.level||e.inst||e.field);
+  const e0=cv.eduList[0]||{level:'',field:'',inst:'',year:''};
+  cv.eduLevel=e0.level;cv.eduField=e0.field;cv.eduInst=e0.inst;cv.eduYear=e0.year;
   cv.skills=v('ef-skills');cv.langs=v('ef-langs');
+  cv.certifications=v('ef-certs');cv.training=v('ef-training');cv.achievements=v('ef-ach');cv.volunteer=v('ef-vol');
   cv.countryCode=detectCode(cv.city)||cv.countryCode;
 
   const ap=document.getElementById('edit-apply');ap.disabled=true;ap.textContent='…';
