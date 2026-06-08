@@ -1,0 +1,13 @@
+# local agent config
+.claude/
+
+# real candidate CVs — private data, never publish
+CV's/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# env files
+.env
+.env*.local
