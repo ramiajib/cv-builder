@@ -1,7 +1,16 @@
+# ─────────────────────────────────────────────────────────────
+# Root config = the CV BUILDER static site.
+# It publishes the repo root and rewrites "/" to cv-builder.html.
+#
+# The MATCHER (Next.js) site does NOT use this file — set its
+# "Base directory" to `matcher` in the Netlify UI so it reads
+# matcher/netlify.toml instead.
+# ─────────────────────────────────────────────────────────────
 [build]
-  base    = "matcher"
-  command = "npm run build"
-  publish = ".next"
+  publish = "."
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+# Serve the CV builder at the site root (rewrite, URL stays "/")
+[[redirects]]
+  from   = "/"
+  to     = "/cv-builder.html"
+  status = 200

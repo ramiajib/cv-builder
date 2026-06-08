@@ -495,8 +495,20 @@ const SUPA_URL='https://wlxidarktzpistgpawnr.supabase.co';
 const SUPA_KEY='sb_publishable_3V7DoYDnsmbkNv-DTdo2uw_MSb7OvzE';
 const PRIVACY_EMAIL='info@carmyne.ae';               // contact for data access / deletion requests
 const MATCHER_URL='https://carmyne-job-matcher.netlify.app';
+// Generate a UUID client-side so we know the submission ID without reading
+// the row back. The submissions table is INSERT-only under RLS (no SELECT
+// policy), so `return=representation` would come back empty — we supply our
+// own id instead and reuse it for the matcher handoff link.
+function newUUID(){
+  if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();
+  // Fallback for older browsers / non-secure contexts
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);
+  });
+}
 async function saveSubmission(){
   if(!cv.consent)return null;                       // only store if the user agreed
+  const sid=newUUID();
   try{
     const res=await fetch(SUPA_URL+'/rest/v1/submissions',{
       method:'POST',
@@ -504,9 +516,10 @@ async function saveSubmission(){
         'apikey':SUPA_KEY,
         'Authorization':'Bearer '+SUPA_KEY,
         'Content-Type':'application/json',
-        'Prefer':'return=representation'            // return the inserted row so we get the id
+        'Prefer':'return=minimal'
       },
       body:JSON.stringify({
+        id:sid,
         name:cv.name,title:cv.title,city:cv.city,email:cv.email,
         phone:fmtPhone(cv.phone,cv.countryCode),linkedin:cv.linkedin,
         years_exp:cv.yearsExp,relocate:!!cv.relocate,relocate_where:cv.relocateWhere,
@@ -515,8 +528,7 @@ async function saveSubmission(){
       })
     });
     if(!res.ok)return null;
-    const rows=await res.json();
-    return rows?.[0]?.id??null;
+    return sid;
   }catch(e){return null;/* never block CV generation if the save fails */}
 }
 
