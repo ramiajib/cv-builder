@@ -801,7 +801,7 @@ function enhanceDuty(raw,preserve){
   // capitalized) — never replace it with generic canned text or a keyword-matched
   // template, which would destroy the strongest content on the page.
   if(preserve){
-    const clean=fixed.replace(/^[•\-\*▪◦·‣«»●0]+\s+(?=[A-Za-z])/,'').replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
+    const clean=fixed.replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢«»●0]+\s+(?=[A-Za-z])/,'').replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢\s]+/,'').replace(/\s{2,}/g,' ').trim();
     if(clean.split(/\s+/).filter(Boolean).length>=2)return capFirst(clean);
     return'';                                         // drop stray single-word fragments
   }
@@ -847,7 +847,7 @@ function enhanceSkill(raw){
   for(const[k,v]of Object.entries(SKILL_MAP)){if(key===k)return v;}   // exact map first
   if(key.split(/\s+/).length<=2)                                      // fuzzy only for terse from-scratch input
     for(const[k,v]of Object.entries(SKILL_MAP)){if(key.includes(k))return v;}
-  return fixAcr(smartCase(fixSpell(raw.trim())));                     // preserve MATLAB/LabVIEW/AutoCAD casing
+  return fixAcr(smartCase(fixHyphenSpacing(fixSpell(raw.trim()))));   // preserve MATLAB/LabVIEW/AutoCAD casing; repair "Decision - making"
 }
 // Split a skills blob into category groups. Handles both a flat list ("Python, SQL,
 // Excel") and the very common labelled form ("Programming & Modeling: MATLAB, Python
@@ -855,15 +855,21 @@ function enhanceSkill(raw){
 // candidate authored survives instead of being mashed into one comma run.
 function parseSkillGroups(raw){
   const out=[];
-  const add=(label,str)=>{
-    const items=(str||'').split(/[,،;·•|]/).map(x=>x.replace(/[•▪◦·‣«»‹›]/g,' ').trim())
-      .filter(Boolean).map(enhanceSkill).filter(x=>x&&x.replace(/[^A-Za-z0-9]/g,'').length>=2);
-    if(items.length)out.push({label:label||'',items:[...new Set(items)]});
+  const splitItems=str=>(str||'').split(/[,،;·•|]/).map(x=>x.replace(/[•▪◦·‣«»‹›●○■□▸►▶◆✦➢]/g,' ').trim())
+    .filter(Boolean).map(enhanceSkill).filter(x=>x&&x.replace(/[^A-Za-z0-9]/g,'').length>=2);
+  const add=(label,items)=>{
+    if(!items.length)return;
+    const ex=label?out.find(g=>g.label.toLowerCase()===label.toLowerCase()):null;   // merge into existing category
+    if(ex)ex.items=[...new Set([...ex.items,...items])];
+    else out.push({label:label||'',items:[...new Set(items)]});
   };
+  let curLabel='';                       // a "Technical:" line on its own applies to the lines below it
   for(const line of (raw||'').split('\n').map(l=>l.trim()).filter(Boolean)){
+    const standalone=line.match(/^([A-Za-z][A-Za-z &/]{1,28}?)\s*:\s*$/);
+    if(standalone&&standalone[1].split(/\s+/).length<=4){curLabel=fixAcr(tCase(standalone[1].trim()));continue;}
     const m=line.match(/^([A-Za-z][A-Za-z &/]{1,30}?)\s*:\s*(.+)$/);
-    if(m&&m[1].split(/\s+/).length<=4)add(fixAcr(tCase(m[1].trim())),m[2]);
-    else add('',line);
+    if(m&&m[1].split(/\s+/).length<=4){curLabel='';add(fixAcr(tCase(m[1].trim())),splitItems(m[2]));}
+    else add(curLabel,splitItems(line));
   }
   return out;
 }
@@ -890,7 +896,7 @@ function parseLanguages(raw){
     const lv=(c.match(LANG_LV_RE)||[''])[0];
     const namesPart=c.replace(LANG_LV_RE,' ')
       .replace(/\b(in|proficiency|level|skills?|languages?|mother\s*tongue|of|with|a|an|the)\b/ig,' ')
-      .replace(/[()\[\]:–—\-]/g,' ').replace(/\s{2,}/g,' ').trim();
+      .replace(/[()\[\]:–—\-•▪◦·‣●○■□▸►▶◆✦➢]/g,' ').replace(/\s{2,}/g,' ').trim();
     const names=namesPart.split(/\s+and\s+|\s*&\s*|\s*\/\s*/i).map(x=>x.trim()).filter(Boolean);
     (names.length?names:[namesPart]).forEach(n=>push(n,lv));
   }
@@ -1813,7 +1819,7 @@ function parseCV(text){
   cv.achievements=bulletizeList(sec.achievements,false).join('\n');
   cv.volunteer=bulletizeList(sec.volunteer,false).join('\n');
   if(sec.summary.length){
-    const sm=sec.summary.join(' ').replace(/[•\-\*▪◦·‣]/g,' ').replace(/\s{2,}/g,' ').trim();
+    const sm=sec.summary.join(' ').replace(/[•\-\*▪◦·‣●○■□▸►▶◆✦➢]/g,' ').replace(/\s{2,}/g,' ').trim();
     if(sm.length>=40)cv.summary=sm;          // keep the candidate's real profile text
   }
   // Many designed CVs print the profile paragraph right under the name with NO
@@ -1841,7 +1847,7 @@ const LANG_LEVELS={native:'Native','mother tongue':'Native',fluent:'Fluent',adva
   limited:'Limited',conversational:'Conversational',bilingual:'Bilingual'};
 function levelCanon(s){const k=(s||'').toLowerCase().replace(/[^a-z]/g,'');for(const key in LANG_LEVELS)if(key.replace(/[^a-z]/g,'')===k)return LANG_LEVELS[key];return null;}
 function pairLanguages(rawLines){
-  const lines=(rawLines||[]).map(l=>(l||'').replace(/[•\-\*▪◦·‣«»‹›]/g,' ').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+  const lines=(rawLines||[]).map(l=>(l||'').replace(/[•\-\*▪◦·‣●○■□▸►▶◆✦➢«»‹›]/g,' ').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
   // If a line already contains both name + level ("English: Fluent"), leave to parseLanguages.
   if(lines.some(l=>/[:\-(]/.test(l)&&levelCanon(l.split(/[:\-(]/).pop())))
     return lines.join(', ');
@@ -1866,7 +1872,7 @@ function bulletizeList(arr,splitPipes){
     if(!l)continue;
     const parts=splitPipes? l.split(/\s*[|•▪◦‣]\s*/) : l.split(/\s*[•▪◦‣]\s*/);
     for(let p of parts){
-      p=p.replace(/^[•\-\*▪◦·‣–—\s]+/,'').replace(/[;\s]+$/,'').trim();
+      p=p.replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢–—\s]+/,'').replace(/[;\s]+$/,'').trim();
       if(p&&p.replace(/\s/g,'').length>=3)out.push(p);
     }
   }
@@ -1912,7 +1918,11 @@ function headerKind(line){
   const norm=t.replace(/&/g,' and ').replace(/[^A-Za-z\s]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
   if(!norm||norm.length>40)return undefined;          // headings are short labels
   // ── exact whole-line headers (most reliable) ──
-  if(/^(work experience|professional experience|professional career|experience|employment(?: history)?|work history|career(?: history| summary)?)$/.test(norm))return'experience';
+  // experience — allow a qualifier prefix (research / teaching / clinical / …) so
+  // "RESEARCH EXPERIENCE" is recognized. "volunteer" is deliberately excluded so it
+  // still routes to the volunteer section below.
+  if(/^((?:work|professional|research|teaching|clinical|academic|laboratory|lab|industry|relevant|related|practical|internship|field|project)\s+)?experience$/.test(norm)
+     ||/^(professional career|employment(?: history)?|work history|career(?: history| summary)?|research experiences?)$/.test(norm))return'experience';
   if(/^(education(?:al)?(?: background)?|education and training|academic(?: background)?|academic qualifications?|qualifications?)$/.test(norm))return'education';
   // skills — allow the common qualifier prefixes (computer / soft / technical / IT
   // / digital …) and the compound "technical and soft skills" sidebar label.
@@ -2026,12 +2036,17 @@ function titleAfterName(lines,name){
     const t=(lines[i]||'').trim();
     if(!t||isHeader(t))break;
     if(/\d|@|linkedin\.com|\+\d/i.test(t))break;     // contact / date line
+    if(LOCATION_RE.test(t))break;                    // location line ("Riyadh, Saudi Arabia") is not a title
     if(/[.!?]$/.test(t)||t.split(/\s+/).length>6)break;   // sentence / too long for a role
     out.push(t);
     if(out.length>=2)break;
   }
   return out.join(' · ');
 }
+// Cities (from CITY_CODES) + countries — used to recognise a location line so it's
+// never mistaken for a job title under the name banner.
+const LOCATION_RE=new RegExp('\\b('+Object.keys(CITY_CODES).map(c=>c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+
+  '|saudi arabia|ksa|uae|united arab emirates|qatar|kuwait|bahrain|oman|jordan|lebanon|egypt|syria|iraq|libya|tunisia|morocco|algeria|sudan|yemen|palestine|turkey|cyprus|usa|united states|uk|united kingdom|canada|france|germany|spain|italy|india|pakistan|bangladesh|philippines|indonesia|nigeria|kenya|ethiopia|south africa)\\b','i');
 // Fallback when the name banner isn't in the text (e.g. white-on-colour header an
 // OCR pass can't read): reconstruct it from the LinkedIn slug or a separated email
 // local-part. "linkedin.com/in/maria-el-chikhani-12345" → "Maria El Chikhani".
@@ -2084,7 +2099,7 @@ function extractJobs(lines){
   const DTOK='(?:present|current|ongoing|(?:(?:'+MONTHS+')[a-z]*\\.?\\s*)?(?:\\d{1,2}\\s*[\\/.]\\s*)?(?:19|20)\\d{2})';
   const monthYear=new RegExp('(?:(?:'+MONTHS+')[a-z]*\\.?\\s*)?(?:\\d{1,2}\\s*[\\/.]\\s*)?(?:19|20)\\d{2}','i');
   const yearRe=/\b(19|20)\d{2}\b/;
-  const isBullet=l=>/^[•\*▪◦·‣]\s?|^[-–—]\s+/.test(l);
+  const isBullet=l=>/^[•\*▪◦·‣●○■□▸►▶◆✦➢»·]\s?|^[-–—]\s+/.test(l);
   // A genuine date / date-range line: either a real "X – Y" range, or a line
   // that is essentially nothing but a single date token. NOT a prose line that
   // merely happens to contain a year.
@@ -2107,7 +2122,7 @@ function extractJobs(lines){
     return{from:all[0]?all[0].trim():'',to:presentRe.test(seg)?'Present':(all[1]?all[1].trim():'')};
   }
   function parseHeader(text){
-    text=(text||'').replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
+    text=(text||'').replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢\s]+/,'').replace(/\s{2,}/g,' ').trim();
     if(!text)return{title:'',company:''};
     let title='',company='';
     const at=text.split(/\s+(?:at|@|،|\|)\s+/i);
@@ -2118,13 +2133,17 @@ function extractJobs(lines){
     return{title,company};
   }
   function headerFromDateLine(l){
-    const stripped=l.replace(new RegExp(DTOK,'ig'),' ')
+    // Remove the date RANGE as a whole first (so its internal dash goes with it),
+    // then stray date tokens — but KEEP the title/company "—" separator so an
+    // inline header like "Title — Company 2016-2018" still splits correctly.
+    let s=l;const rm=l.match(RANGE_RE);if(rm)s=s.replace(rm[0],' ');
+    s=s.replace(new RegExp(DTOK,'ig'),' ')
       .replace(new RegExp(presentRe.source,'ig'),' ')
       .replace(/\b(?:till|until|to|since|from)\b/ig,' ')   // connector words ("May 2026 – till Present")
-      .replace(/\d{1,2}\s*[\/.]\s*/g,' ')        // stray "10/" remnants from MM/YYYY
-      .replace(/[–—\-]+/g,' ').replace(/\s{2,}/g,' ').trim();
-    if(stripped.replace(/[^A-Za-z]/g,'').length<2)return{title:'',company:''};  // only dates → no inline header
-    return parseHeader(stripped);
+      .replace(/\d{1,2}\s*[-\/.]\s*(?=\d)/g,' ')           // stray "10/" / "02-" remnants
+      .replace(/\s{2,}/g,' ').trim().replace(/^[|,\-–—\s]+|[|,\-–—\s]+$/g,'').trim();
+    if(s.replace(/[^A-Za-z]/g,'').length<2)return{title:'',company:''};  // only dates → no inline header
+    return parseHeader(s);
   }
   // Role lexicon + location matcher — to split a "title-first" header block where
   // the role title sits on its own line above a "Company City, Country" line.
@@ -2165,7 +2184,18 @@ function extractJobs(lines){
   // date line — inline on it, on the line BELOW it (date-first layout) or the line
   // ABOVE it (title-first layout). Then collect the duties between consecutive jobs
   // and stitch line-wrapped sentences back together.
-  const L=lines.map(x=>x.trim()).filter(Boolean);
+  let L=lines.map(x=>x.trim()).filter(Boolean);
+  // Re-join a header that wrapped onto a second line carrying the date, e.g.
+  // "Epidemiology Research — Massachusetts College … Sciences" + "(MCPHS) 2021-2024".
+  // The continuation begins with a parenthetical and the line above is a dateless,
+  // non-bullet header → glue them so the date anchors the full "Title — Company" line.
+  L=L.reduce((acc,l)=>{
+    const prev=acc[acc.length-1];
+    if(prev&&/^\(/.test(l)&&!isBullet(prev)&&!isDateLine(prev)&&!/[.!?]$/.test(prev)&&/\s[–—-]\s|\sat\s/.test(prev))
+      acc[acc.length-1]=prev+' '+l;
+    else acc.push(l);
+    return acc;
+  },[]);
   const dateAt=L.map((l,i)=>(!isBullet(l)&&isDateLine(l))?i:-1).filter(i=>i>=0);
   if(!dateAt.length)return[];
   const anchors=dateAt.map(di=>{
@@ -2215,7 +2245,7 @@ function extractJobs(lines){
     for(let j=dutyStart;j<end;j++){
       const l=L[j];
       if(!l||isSubHeading(l)||(!isBullet(l)&&isDateLine(l)))continue;
-      const t=l.replace(/^[•\-\*▪◦·‣\s]+/,'').replace(/\s{2,}/g,' ').trim();
+      const t=l.replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢\s]+/,'').replace(/\s{2,}/g,' ').trim();
       if(t&&t.replace(/\s/g,'').length>=2)raw.push(t);
     }
     // stitch wrapped lines: a continuation either starts lower-case or follows a
@@ -2275,7 +2305,7 @@ const EDU_YEAR_RE=/\b(19|20)\d{2}\b/;
 // entry begins only once the current one ALREADY has both an institution and a
 // degree and we meet another — the natural boundary between two schools.
 function parseEduList(lines){
-  let clean=(lines||[]).map(l=>(l||'').replace(/^[•\-\*▪◦·‣+«»\s]+/,'').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+  let clean=(lines||[]).map(l=>(l||'').replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢+«»\s]+/,'').replace(/\s{2,}/g,' ').trim()).filter(Boolean);
   if(!clean.length)return[];
   // Stitch a wrapped institution/degree name: a line ending on a conjunction,
   // "&" or comma continues onto the next ("University of Science and" +
