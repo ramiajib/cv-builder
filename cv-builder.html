@@ -135,7 +135,7 @@ const cv={
   eduLevel:'',eduField:'',eduInst:'',eduYear:'',eduList:[],
   skills:'',langs:'',summary:'',
   certifications:'',training:'',achievements:'',volunteer:'',
-  _saved:false,_fromUpload:false
+  _saved:false,_fromUpload:false,_matchSid:''
 };
 
 /* ══════════════════════════════════════════════
@@ -1433,11 +1433,15 @@ async function savePDF(){
     await loadScript(PDFMAKE_JS);
     await loadScript(PDFMAKE_FONTS);
     pdfMake.createPdf(buildCvDoc(cvData())).download(pdfFilename(cv.name)+'.pdf');
-    // Persist only when the user downloads the final version (consent required)
-    if(cv.consent&&!cv._saved){
-      cv._saved=true;
-      const sid=await saveSubmission();
-      if(sid)showOpportunitiesButton(sid);
+    // Persist only when the user downloads the final version (consent required).
+    // Save once (guarded by _matchSid); mark _saved only on success so a failed
+    // save can retry on the next download. Show the CTA whenever we have an id.
+    if(cv.consent){
+      if(!cv._matchSid){
+        const sid=await saveSubmission();
+        if(sid){cv._saved=true;cv._matchSid=sid;}
+      }
+      if(cv._matchSid)showOpportunitiesButton(cv._matchSid);
     }
   }catch(e){
     botSay(st.saveErr,true);
