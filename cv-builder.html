@@ -82,6 +82,20 @@
     #edit-foot .cancel{background:#eee;color:#444}
     #edit-foot .apply{background:#075E54;color:#fff}
     #edit-foot .apply:disabled{opacity:.6;cursor:default}
+    /* ── Discover-jobs modal (shown after Save PDF) ── */
+    #discover-overlay{display:none;position:fixed;inset:0;z-index:2000;background:rgba(7,49,42,.55);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+    #discover-overlay.open{display:flex}
+    #discover-card{background:#fff;border-radius:20px;max-width:420px;width:100%;padding:30px 26px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.3);animation:dpop .25s ease}
+    @keyframes dpop{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+    #discover-card .demoji{font-size:42px;line-height:1;margin-bottom:8px}
+    #discover-card h2{margin:0 0 6px;font-size:21px;color:#075E54}
+    #discover-card .dsub{font-size:14px;color:#555;line-height:1.5;margin:0 0 18px}
+    #discover-card .dlist{text-align:start;background:#f3faf7;border:1px solid #d8efe6;border-radius:12px;padding:14px 16px;margin:0 0 20px}
+    #discover-card .dlist div{font-size:13.5px;color:#2a4b42;padding:5px 0;display:flex;gap:9px;align-items:flex-start}
+    #discover-card .dlist div span{color:#25D366;font-weight:700;flex-shrink:0}
+    #discover-card .dgo{display:block;background:#075E54;color:#fff;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;text-decoration:none;transition:background .15s}
+    #discover-card .dgo:hover{background:#054c44}
+    #discover-card .dlater{background:none;border:none;color:#888;font-size:13px;cursor:pointer;font-family:inherit;margin-top:14px;text-decoration:underline}
   </style>
 </head>
 <body>
@@ -119,6 +133,16 @@
     <div id="edit-foot">
       <button class="cancel" id="edit-cancel" onclick="closeEdit()">Cancel</button>
       <button class="apply" id="edit-apply" onclick="applyEdit()">Apply changes</button>
+    </div>
+  </div>
+  <div id="discover-overlay" onclick="if(event.target===this)closeDiscover()">
+    <div id="discover-card">
+      <div class="demoji">🎯</div>
+      <h2 id="dsc-title">Your CV is ready!</h2>
+      <p class="dsub" id="dsc-sub">Now discover real job opportunities matched to your profile.</p>
+      <div class="dlist" id="dsc-list"></div>
+      <a class="dgo" id="dsc-go" href="#" target="_blank" rel="noopener noreferrer">🔍 Discover Matching Jobs →</a>
+      <button class="dlater" id="dsc-later" onclick="closeDiscover()">Maybe later</button>
     </div>
   </div>
 
@@ -199,6 +223,14 @@ const T={
     viewBtn:  '👁 View CV Again',
     discoverMsg: '🎯 Want to see jobs that match your CV? Discover real opportunities tailored to your profile.',
     discoverBtn: '🔍 Discover Matching Jobs →',
+    discoverTitle: '🎯 Your CV is ready!',
+    discoverSub: 'Now discover real job opportunities matched to your profile.',
+    discoverPoints: [
+      'Jobs ranked by how well they fit your CV',
+      'A match score for every role',
+      'Apply directly to the jobs you like',
+    ],
+    discoverLater: 'Maybe later',
     // ── Start step + Upload flow ──
     chooseStart:'How would you like to start?',
     optUpload: '📤 Upload my CV',
@@ -294,6 +326,14 @@ const T={
     viewBtn:  '👁 عرض السيرة الذاتية مجدداً',
     discoverMsg: '🎯 هل تريد رؤية الوظائف المناسبة لسيرتك؟ اكتشف فرص عمل حقيقية مصمّمة خصيصاً لملفك.',
     discoverBtn: '🔍 اكتشف الوظائف المناسبة →',
+    discoverTitle: '🎯 سيرتك الذاتية جاهزة!',
+    discoverSub: 'اكتشف الآن فرص عمل حقيقية تناسب ملفك المهني.',
+    discoverPoints: [
+      'وظائف مرتّبة حسب مدى ملاءمتها لسيرتك',
+      'نسبة تطابق لكل وظيفة',
+      'تقدّم مباشرةً للوظائف التي تعجبك',
+    ],
+    discoverLater: 'ربما لاحقاً',
     // ── خطوة البداية + رفع السيرة ──
     chooseStart:'كيف تريد أن تبدأ؟',
     optUpload: '📤 رفع سيرتي الذاتية',
@@ -1450,21 +1490,27 @@ async function savePDF(){
   }
 }
 
-// Show a "Discover Matching Jobs" CTA after the PDF is saved to Supabase.
+// Show a centered "Discover Matching Jobs" modal after the PDF is saved.
+// Sits above the CV preview (z-index 2000) so it's reachable on every device.
 function showOpportunitiesButton(sid){
-  botSay(s().discoverMsg);
-  const wrap=document.createElement('div');
-  wrap.className='choices';
-  const a=document.createElement('a');
-  a.href=MATCHER_URL+'/match?submission_id='+sid;
-  a.target='_blank';
-  a.rel='noopener noreferrer';
-  a.className='choice-btn primary';
-  a.style.textDecoration='none';
-  a.textContent=s().discoverBtn;
-  wrap.appendChild(a);
-  chatEl().appendChild(wrap);
-  wrap.scrollIntoView({behavior:'smooth'});
+  const st=s();
+  document.getElementById('dsc-title').textContent=st.discoverTitle;
+  document.getElementById('dsc-sub').textContent=st.discoverSub;
+  const list=document.getElementById('dsc-list');
+  list.innerHTML='';
+  (st.discoverPoints||[]).forEach(p=>{
+    const row=document.createElement('div');
+    row.innerHTML='<span>✓</span><div>'+p+'</div>';
+    list.appendChild(row);
+  });
+  const go=document.getElementById('dsc-go');
+  go.href=MATCHER_URL+'/match?submission_id='+sid;
+  go.textContent=st.discoverBtn;
+  document.getElementById('dsc-later').textContent=st.discoverLater;
+  document.getElementById('discover-overlay').classList.add('open');
+}
+function closeDiscover(){
+  document.getElementById('discover-overlay').classList.remove('open');
 }
 
 /* ══════════════════════════════════════════════
