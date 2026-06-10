@@ -26,12 +26,8 @@ Drivers, cleaners, security guards, helpers, receptionists, salespeople, technic
 3. Answer the simple questions — short words are fine.
 4. Download your finished CV and send it to employers.
 
-## Project structure
+---
 
-| File | Description |
-|------|-------------|
-| [`cv-builder.html`](cv-builder.html) | The full web app — a single self-contained HTML file. |
+## The Matcher — AI-Powered Job Matching
 
-## License
-
-Free to use. Contributions and suggestions welcome.
+The `matcher/` subfolder is a companion **Next.js 14** application called **JobMatch**. It extends the CV Builder concept: instead of just building a CV, it matches a candidate's full profile against real job listings us

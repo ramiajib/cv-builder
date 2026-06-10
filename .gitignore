@@ -11,3 +11,11 @@ Thumbs.db
 # env files
 .env
 .env*.local
+
+# more private CV folders
+NEW CV's/
+
+# parser test harness artifacts
+tools/cv-harness/node_modules/
+tools/cv-harness/out/
+tools/cv-harness/package-lock.json

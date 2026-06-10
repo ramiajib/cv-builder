@@ -1550,16 +1550,25 @@ function detectColumns(items,pageW){
     const b0=Math.floor(x0/binW),b1=Math.floor(Math.max(x0,x1-1e-6)/binW);
     for(let b=b0;b<=b1&&b<BINS;b++)cover[b]++;
   }
-  const emptyT=Math.max(1,items.length*0.012);
-  let best=null,run=null;
-  for(let b=0;b<=BINS;b++){
-    if(b<BINS&&cover[b]<=emptyT){if(!run)run={s:b};run.e=b;}
-    else if(run){
-      const frac=((run.s+run.e)/2)/BINS,wBins=run.e-run.s+1;
-      if(frac>=0.18&&frac<=0.66&&wBins>=2&&(!best||wBins>best.wBins))best={...run,wBins};
-      run=null;
+  const findBand=emptyT=>{
+    let best=null,run=null;
+    for(let b=0;b<=BINS;b++){
+      if(b<BINS&&cover[b]<=emptyT){if(!run)run={s:b};run.e=b;}
+      else if(run){
+        const frac=((run.s+run.e)/2)/BINS,wBins=run.e-run.s+1;
+        if(frac>=0.18&&frac<=0.66&&wBins>=2&&(!best||wBins>best.wBins))best={...run,wBins};
+        run=null;
+      }
     }
-  }
+    return best;
+  };
+  let best=findBand(Math.max(1,items.length*0.012));
+  // Second chance: some designed CVs emit a handful of single text items that SPAN
+  // both columns ("CONTACT : SUMMARY :" as one run). Those few crossings keep the
+  // gutter from ever reading empty, and the whole page interleaves. Retry tolerating
+  // a small number of crossing items; validation below still rejects fake columns.
+  let relaxed=false;
+  if(!best){best=findBand(Math.max(2,Math.ceil(items.length*0.035)));relaxed=true;}
   if(!best)return[items];
   const bX=((best.s+best.e+1)/2)*binW;
   const left=items.filter(it=>(it.x+(it.w||0)/2)<bX);
@@ -1582,7 +1591,8 @@ function detectColumns(items,pageW){
     const d=ls.filter(s=>{const t=s.split(/\s+/).filter(Boolean);return t.length&&t.every(w=>DATEISH.test(w));}).length;
     return d/ls.length;};
   const minority=left.length<=right.length?left:right;
-  if(linesOf(left)>=4&&linesOf(right)>=4&&minority.length>=8&&dateFrac(minority)<0.6)
+  const minLines=relaxed?6:4;                    // relaxed gutter → demand stronger evidence
+  if(linesOf(left)>=minLines&&linesOf(right)>=minLines&&minority.length>=8&&dateFrac(minority)<0.6)
     return[left,right];
   return[items];
 }
@@ -1601,6 +1611,12 @@ function dehyphenate(text){
   return out.join('\n');
 }
 // Group a set of positioned text items into lines (top→bottom, left→right).
+// GAP-AWARE join: pdf.js splits kerned runs into separate items ("O" + "ct 2024",
+// "202" + "4", "m" + "anager"). Joining every item with a space used to inject
+// bogus spaces that broke date detection ("O ct 2024"), email matching
+// ("user @gmail.com") and even section headers ("E XPE R IE NCE"). So we only
+// insert a space when the geometric gap between two items is at least a third of
+// a character width — a kerning split has a near-zero gap, a real word gap doesn't.
 function itemsToLines(items){
   if(!items.length)return'';
   const sorted=items.slice().sort((a,b)=>b.y-a.y);          // top first
@@ -1610,8 +1626,23 @@ function itemsToLines(items){
     cur.push(it);lastY=it.y;
   }
   if(cur.length)lines.push(cur);
-  return lines.map(ln=>ln.sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ')
-    .replace(/\s{2,}/g,' ').trim()).filter(Boolean).join('\n');
+  return lines.map(ln=>{
+    ln.sort((a,b)=>a.x-b.x);
+    let s='',prev=null;
+    for(const it of ln){
+      if(prev){
+        const gap=it.x-(prev.x+(prev.w||0));
+        const cwA=prev.w&&prev.s.trim().length?prev.w/prev.s.length:0;
+        const cwB=it.w&&it.s.trim().length?it.w/it.s.length:0;
+        const cw=Math.max(cwA,cwB,3);
+        // join only on a truly tiny gap (kerning split ≈ 0pt); a real word space is
+        // ≥2pt even at small sizes — capping at 1.2pt keeps "Work Experience" intact
+        s+=(gap<Math.min(1.2,cw*0.25))?'':' ';
+      }
+      s+=it.s;prev=it;
+    }
+    return s.replace(/\s{2,}/g,' ').trim();
+  }).filter(Boolean).join('\n');
 }
 // PDF → text (pdf.js), column-aware so sidebar layouts don't scramble.
 async function extractPDF(file){
@@ -1717,6 +1748,7 @@ function uploadRetryButtons(){
 async function handleFile(file){
   if(!file)return;
   cv._fromUpload=true;                 // preserve the candidate's own bullets / profile
+  cv._fileName=file.name||'';          // name fallback of last resort
   choicesEl().classList.add('hidden');
   userSay('📎 '+file.name);
   setProgress(20);
@@ -1749,13 +1781,30 @@ async function handleFile(file){
 // Best-effort parse of raw CV text into the cv structure
 function parseCV(text){
   const clean=text.replace(/\r/g,'').replace(/ /g,' ');
-  const lines=clean.split('\n').map(l=>l.trim()).filter(Boolean);
-  cv.email=(clean.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)||[''])[0];
+  let lines=clean.split('\n').map(l=>l.trim()).filter(Boolean);
+  // Strip page furniture: "Page 3 of 7" counters, short lines repeated 3+ times
+  // across a multi-page CV (running headers/footers like "W.N., May 2026"), and
+  // "NAME — continued …" page-top banners that otherwise pollute sections.
+  const counts={};
+  for(const l of lines){const k=l.toLowerCase();counts[k]=(counts[k]||0)+1;}
+  const firstLine=(lines[0]||'').toLowerCase();
+  lines=lines.filter((l,i)=>{
+    if(/^page\s*\d+(\s*(?:of|\/)\s*\d+)?$/i.test(l))return false;
+    if(/^.{2,40}\s[—–-]\s*continued\b/i.test(l))return false;
+    const k=l.toLowerCase();
+    // exact-repeated short lines are running headers/footers — but ONLY when they
+    // carry a digit (a dated footer) or repeat the top name banner; plain repeated
+    // job titles ("Restaurant Manager" ×3) are legitimate CV content.
+    return !(counts[k]>=3&&l.length<=60&&(/\d/.test(l)||(i>0&&k===firstLine))&&!isHeader(l)&&!/^[•\-\*▪◦·‣]/.test(l)&&!/@/.test(l));
+  });
+  // tolerate a kerning/OCR space around "@" ("user @gmail.com")
+  cv.email=((clean.match(/[\w.+-]+\s?@\s?[\w-]+\.[\w.-]+/)||[''])[0]).replace(/\s/g,'').replace(/\.+$/,'');
   // Prefer phones that carry a country code / trunk prefix (avoids matching
   // year-ranges like "2003-2004"); fall back to a single broad match otherwise.
-  const strictPh=(clean.match(/(?:\+|00)\d[\d\s().\-]{7,}\d|\b0\d[\d\s().\-]{8,}\d/g)||[]).map(p=>p.trim());
+  const strictPh=(clean.match(/(?:\+|00)\s?\(?\s?\d[\d\s().\-]{7,}\d|\b0\d[\d\s().\-]{8,}\d/g)||[]).map(p=>p.trim());
   const broadPh=(clean.match(/\+?\d[\d\s().\-]{7,}\d/g)||[]).map(p=>p.trim());
-  const phAll=[...new Set(strictPh.length?strictPh:broadPh.slice(0,1))];
+  const tidyPh=p=>p.replace(/[()]/g,' ').replace(/\s*-\s*/g,'-').replace(/\s{2,}/g,' ').replace(/^\+\s+/,'+').trim();
+  const phAll=[...new Set((strictPh.length?strictPh:broadPh.slice(0,1)).map(tidyPh))];
   cv.phone=phAll[0]||'';cv.phone2=phAll[1]||'';
   const li=clean.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/[^\s]+/i);cv.linkedin=li?li[0]:'';
   // nationality + visa/residency (GCC-relevant; DOB / marital status / age ignored)
@@ -1763,9 +1812,14 @@ function parseCV(text){
   cv.nationality=nat?tCase(nat[1].trim()):'';
   const visa=clean.match(/(?:non[-\s]?)?transferable\s+(?:rp|residence permit|iqama|visa)|residence permit|transferable\s+iqama|visa\s+status\s*[:\-]?\s*[A-Za-z ]{3,20}/i);
   cv.visa=visa?visa[0].replace(/\s{2,}/g,' ').trim():'';
+  // labeled bio fields ("Current Position: Executive Director, Neom Projects") — formal CVs
+  const curPos=clean.match(/current\s+position\s*[:\-]\s*([^\n]{3,70})/i);
   cv.name=guessName(lines);
   if(cv.name){const tb=titleAfterName(lines,cv.name);if(tb)cv.title=tb;}   // role line(s) under the name banner
+  // a labeled "Current Position:" is authoritative — it beats whatever sat under the name
+  if(curPos)cv.title=curPos[1].replace(/\s{2,}/g,' ').replace(/[\s,;|]+$/,'').trim();
   if(!cv.name)cv.name=nameFromContacts(cv.linkedin,cv.email);   // banner unreadable → derive it
+  if(!cv.name)cv.name=nameFromFilename(cv._fileName);           // last resort: the file is often "First Last CV.pdf"
   const secLines=splitGluedHeaders(lines);
   const sec=sliceSections(secLines);
   if(sec.skills.length){
@@ -1780,7 +1834,9 @@ function parseCV(text){
       const line=(raw||'').replace(/[•\*▪◦·‣«»‹›]/g,' ').replace(/(^|[\s,])\+(?=\s)/g,'$1 ').replace(/\s{2,}/g,' ').trim();
       if(!line)continue;
       const mLang=line.match(/^\s*(?:languages?|language skills|langues|اللغات)\s*[:\-]\s*(.+)$/i);
-      if(mLang){if(!cv.langs)cv.langs=mLang[1].trim();continue;}
+      // "Languages: Python, C++" in a tech CV is a SKILL line, not spoken languages
+      if(mLang&&!(PROG_LANG_RE.test(mLang[1])&&!HUMAN_LANG_RE.test(mLang[1]))){
+        if(!cv.langs)cv.langs=mLang[1].trim();continue;}
       const low=line.toLowerCase();
       if(low===nameLow||titleLows.has(low))continue;                       // name/title leaked from the header
       if(/^(soft|core|technical|key|other|hard|additional|general|computer|interpersonal)?\s*skills?$/i.test(low))continue;  // bare category divider
@@ -1797,7 +1853,12 @@ function parseCV(text){
     }
     cv.skills=merged.join('\n').trim();
   }
-  if(sec.languages.length&&!cv.langs)cv.langs=pairLanguages(sec.languages);
+  if(sec.languages.length&&!cv.langs){
+    const joined=sec.languages.join(' ');
+    if(PROG_LANG_RE.test(joined)&&!HUMAN_LANG_RE.test(joined))      // programming langs → skills
+      cv.skills=(cv.skills?cv.skills+'\n':'')+sec.languages.join(', ');
+    else cv.langs=pairLanguages(sec.languages);
+  }
   if(sec.education.length)parseEdu(sec.education);
   // Experience. Primary: the lines under an EXPERIENCE header. But designed CVs
   // often render that header as low-contrast art OCR can't read — so when the
@@ -1834,7 +1895,8 @@ function parseCV(text){
   }
   cv.city=guessCity(clean);
   cv.countryCode=resolveCountryCode(clean,cv.city);
-  if(!cv.title)cv.title=(cv.jobs[0]&&cv.jobs[0].title)||guessTitle(lines,cv.name)||'';
+  if(!cv.title)cv.title=(curPos?curPos[1].replace(/\s{2,}/g,' ').replace(/[\s,;|]+$/,'').trim():'')
+    ||(cv.jobs[0]&&cv.jobs[0].title)||guessTitle(lines,cv.name)||'';
 }
 
 // Languages in a sidebar are often STACKED — the language name on one line and its
@@ -1915,7 +1977,8 @@ function resolveCountryCode(clean,city){
 function headerKind(line){
   const t=(line||'').trim();
   if(/[.!?]$/.test(t))return undefined;               // sentences/wrapped tails (e.g. "community.") are never headers
-  const norm=t.replace(/&/g,' and ').replace(/[^A-Za-z\s]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+  let norm=t.replace(/&/g,' and ').replace(/[^A-Za-z\s]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+  norm=norm.replace(/\s+continued$/,'');              // "PROFESSIONAL EXPERIENCE (CONTINUED)" page-2 header
   if(!norm||norm.length>40)return undefined;          // headings are short labels
   // ── exact whole-line headers (most reliable) ──
   // experience — allow a qualifier prefix (research / teaching / clinical / …) so
@@ -1927,7 +1990,7 @@ function headerKind(line){
   // skills — allow the common qualifier prefixes (computer / soft / technical / IT
   // / digital …) and the compound "technical and soft skills" sidebar label.
   if(/^((?:key|core|technical|professional|computer|software|it|digital|personal|soft|hard|other|additional|general|interpersonal)\s+)*(skills?|competenc(?:e|ies|y)|expertise|abilities|proficiencies)$/.test(norm.replace(/\band\b/g,' ').replace(/\s+/g,' ').trim())
-     ||/^(expertise|areas of expertise|summary of qualifications)$/.test(norm))return'skills';
+     ||/^(expertise|areas of expertise|summary of qualifications|career focus|core strengths?|areas of strength|management expertise|professional values|systems and tools|tools and technologies|technical proficienc(?:y|ies))$/.test(norm))return'skills';
   if(/^(languages?|language skills|languages? spoken)$/.test(norm))return'languages';
   if(/^(professional summary|career summary|executive summary|summary|executive profile|professional profile|personal profile|profile(?: summary)?|profile|career objective|objective|about(?: me)?|vision)$/.test(norm))return'summary';
   if(/^(certificat(?:e|es|ions?)|certifications and licen[cs]es|licen[cs]es?|professional certifications?)$/.test(norm))return'certifications';
@@ -1945,11 +2008,29 @@ function headerKind(line){
   // recognized-but-irrelevant → ends the current section (content discarded).
   // Bare ambiguous words (community/details/contact/interests/activities) are
   // intentionally excluded — they appear too often as wrapped sentence tails.
-  if(/^(references?|interests and hobbies|hobbies|extracurricular activities|memberships?|affiliations?|publications?|projects?|personal projects|portfolio|personal (?:details|information|info)|contact(?: details| information| me)?|get in touch|declaration)$/.test(norm))return'other';
+  if(/^(references?|interests and hobbies|hobbies|interests|additional activities and interests|extracurricular activities|memberships?|affiliations?|publications?|projects?|personal projects|key projects|major projects(?: handled)?|portfolio|professional development|career impact at a glance|general information|personal (?:details|information|info)|contact(?: details| information| me)?|get in touch|declaration)$/.test(norm))return'other';
   // sidebar contact/personal labels (designed CVs stack them vertically). Treated as
   // section boundaries so a label never bleeds into the previous section; their
   // values are captured by the global email/phone/etc. extractors.
   if(/^(e ?mail|address|location|phone|mobile|tel|telephone|cell|date of birth|d o b|dob|birth date|nationality|gender|sex|marital status|age|visa|iqama|residence|residency|driving licen[cs]e)$/.test(norm))return'other';
+  // Spacing-mangled headers: letter-tracked banners arrive as "E XPE R IE NCE",
+  // tight PDFs as "WORKEXPERIENCE". Squash all spaces and match a compact lexicon —
+  // catches both directions of the damage.
+  if(norm.length<=34){
+    const SQ={experience:'experience',workexperience:'experience',professionalexperience:'experience',
+      employmenthistory:'experience',workhistory:'experience',professionalcareer:'experience',careerhistory:'experience',
+      education:'education',educationalbackground:'education',academicbackground:'education',academicqualifications:'education',
+      skills:'skills',keyskills:'skills',technicalskills:'skills',coreskills:'skills',corecompetencies:'skills',areasofexpertise:'skills',
+      languages:'languages',languageskills:'languages',
+      summary:'summary',professionalsummary:'summary',careersummary:'summary',profile:'summary',professionalprofile:'summary',aboutme:'summary',
+      certifications:'certifications',certificates:'certifications',
+      training:'training',courses:'training',
+      achievements:'achievements',accomplishments:'achievements',awards:'achievements',
+      volunteer:'volunteer',volunteering:'volunteer',
+      references:'other',interests:'other',hobbies:'other',contact:'other',contactinformation:'other',projects:'other'};
+    const k=SQ[norm.replace(/\s+/g,'')];
+    if(k)return k;
+  }
   return undefined;
 }
 function isHeader(line){return headerKind(line)!==undefined;}
@@ -1963,6 +2044,11 @@ function splitGluedHeaders(lines){
   const out=[];
   for(const ln of lines){
     if(headerKind(ln)){out.push(ln);continue;}                // already a clean header
+    // Two sidebar headers fused into ONE pdf.js item spanning both columns
+    // ("CONTACT : SUMMARY :"). Keep only the first — it labels the column whose
+    // content follows in reading order; the second labels the other column.
+    const dbl=ln.match(/^([A-Za-z &]{3,25}?)\s*:\s*([A-Za-z &]{3,25}?)\s*:?\s*$/);
+    if(dbl&&headerKind(dbl[1])&&headerKind(dbl[2])){out.push(dbl[1].trim());continue;}
     const m=ln.match(GLUED_HDR);
     if(m&&headerKind(m[1])&&/[A-Z0-9]/.test((m[2]||'')[0]||'')&&
        !/^(of|in|and|to|for|with|the|on|at|is|are|include|including|such|that|which)\b/i.test(m[2])){
@@ -1972,19 +2058,48 @@ function splitGluedHeaders(lines){
   }
   return out;
 }
+// Human languages vs programming languages — a "Languages: Python, C++" line in a
+// student CV belongs in skills, not the spoken-languages field.
+const HUMAN_LANG_RE=/\b(arabic|english|french|spanish|german|italian|turkish|hindi|urdu|tagalog|filipino|russian|portuguese|chinese|mandarin|cantonese|japanese|korean|dutch|greek|armenian|kurdish|persian|farsi|amharic|swahili|afrikaans|bengali|malayalam|tamil|telugu|sinhala|nepali|indonesian|malay|polish|romanian|ukrainian|hebrew|somali|hausa|punjabi|pashto|dari|عربي|العربية|الإنجليزية)\b/i;
+const PROG_LANG_RE=/\b(python|java(?:script)?|typescript|c\+\+|c#|\.net|php|sql|html|css|react|node(?:\.js)?|matlab|kotlin|swift|ruby|rust|scala|perl|bash|vba|golang)\b/i;
 function sliceSections(lines){
   const out={experience:[],education:[],skills:[],languages:[],summary:[],certifications:[],training:[],achievements:[],volunteer:[]};
+  // A line that can plausibly belong to a LANGUAGES block: short, or naming a human
+  // language. Once a languages section hits prose/job content (an unrecognized label
+  // bled through), STOP capturing — half a CV used to end up in the langs field.
+  const langish=l=>HUMAN_LANG_RE.test(l)||l.split(/\s+/).length<=4;
+  const RANGEISH=/(?:19|20)\d{2}\s*(?:–|—|-|to|till|until)\s*(?:present|current|(?:[a-z]{3,9}\.?\s*)?(?:19|20)\d{2})/i;
   let cur=null;
   for(const ln of lines){
     if(isHeader(ln)){const sct=sectionOf(ln);cur=out[sct]?sct:null;continue;}
-    if(cur)out[cur].push(ln);
+    if(!cur)continue;
+    if(cur==='languages'&&!langish(ln)){cur=null;continue;}
+    // a date RANGE inside skills/languages/certifications = experience bleeding in
+    // (a page-2 job list that follows a page-1 sidebar) → route it (and what
+    // follows) to EXPERIENCE instead of discarding half the career
+    if((cur==='skills'||cur==='languages'||cur==='certifications'||cur==='achievements'||cur==='training'||cur==='volunteer')&&RANGEISH.test(ln)){
+      // the job-header line often sits just ABOVE its date line — pull it along
+      const prev=out[cur][out[cur].length-1];
+      if(prev&&prev.length<=90&&/^[A-Z0-9]/.test(prev)&&!/[.!?:]$/.test(prev)&&!/^[•\-\*▪◦·‣]/.test(prev)){
+        out[cur].pop();out.experience.push(prev);
+      }
+      cur='experience';
+    }
+    out[cur].push(ln);
   }
   return out;
 }
 
+// Job/role vocabulary that disqualifies a line from being someone's NAME —
+// "Communications Strategist" is name-shaped but is a role banner.
+const NAME_STOP_RE=/\b(manager|coordinator|specialist|strategist|consultant|director|engineer|accountant|assistant|officer|supervisor|leader|executive|analyst|designer|developer|marketing|communications?|sales|resources|operations|finance|business|professional|senior|junior|expert|head|chief|administrator|recruiter|trainer|teacher|advisor)\b/i;
 function guessName(lines){
   const re=/^[A-Za-z؀-ۿ][A-Za-z؀-ۿ.'’\-]*(?:\s+[A-Za-z؀-ۿ.'’\-]+){1,3}$/;
-  const norm=l=>(l||'').replace(/\s*-\s*/g,'-').replace(/\s{2,}/g,' ').trim();   // join "Al - Kakhi" → "Al-Kakhi"
+  const norm=l=>(l||'')
+    .replace(/[\w.+-]+\s?@\s?[\w-]+\.[\w.-]+/g,' ')                 // glued email ("NOURHAN DAHIE noura@x.com")
+    .replace(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/\S+/ig,' ')  // glued LinkedIn URL
+    .replace(/\+?\d[\d\s().\-]{6,}\d/g,' ')                         // glued phone
+    .replace(/\s*-\s*/g,'-').replace(/\s{2,}/g,' ').trim();         // join "Al - Kakhi" → "Al-Kakhi"
   const bad=l=>!l||l.length>40||/\d|@/.test(l)||/curriculum vitae|resume|سيرة ذاتية/i.test(l);
   // A real name — not a sentence fragment that merely matches the shape. Designed
   // CVs often hide the name in a low-contrast banner OCR drops, so the first
@@ -1993,6 +2108,7 @@ function guessName(lines){
     if(!re.test(ln))return false;
     if(!/^[A-Z؀-ۿ]/.test(ln))return false;            // names start capitalized
     if(/[a-z]{2,}\.$/.test(ln))return false;          // "…launches." → a sentence tail, not a name
+    if(NAME_STOP_RE.test(ln))return false;            // role banner, not a person
     if(ln.split(/\s+/).some(w=>/^(and|the|of|to|in|for|with|at|on|a|an|or)$/i.test(w)))return false;
     return true;
   };
@@ -2000,8 +2116,18 @@ function guessName(lines){
   let top=[];
   for(const raw of lines.slice(0,10)){if(isHeader(raw))break;top.push(raw);}
   if(!top.length)top=lines.slice(0,3);
-  // pass 1 — a clean standalone name line at the top
-  for(const raw of top){const ln=norm(raw);if(bad(ln)||isHeader(ln))continue;if(looksLikeName(ln))return ln;}
+  // pass 1 — a clean standalone name line at the top. If the line directly above is
+  // a single capitalized word, it's the stacked FIRST name ("Antoine" / "Abi Abboud").
+  const oneWord=/^[A-Z؀-ۿ][A-Za-z؀-ۿ'’\-]{1,}$/;
+  for(let i=0;i<top.length;i++){
+    const ln=norm(top[i]);if(bad(ln)||isHeader(ln))continue;
+    if(looksLikeName(ln)){
+      const above=i>0?norm(top[i-1]):'';
+      if(above&&oneWord.test(above)&&!bad(above)&&!isHeader(above)&&!NAME_STOP_RE.test(above)&&ln.split(/\s+/).length<=3)
+        return above+' '+ln;
+      return ln;
+    }
+  }
   // pass 2 — designed CVs print the name as an ALL-CAPS banner that, after a
   // sidebar column, can land deeper in the text (e.g. the contact column is
   // emitted first, then "AMAL WAHBI" at the top of the main column). Take the
@@ -2011,6 +2137,7 @@ function guessName(lines){
     if(bad(t)||isHeader(t)||/,/.test(t))return false;
     if(!/^[A-Z؀-ۿ][A-Z؀-ۿ.'’\-]*(?:\s+[A-Z؀-ۿ.'’\-]+){1,3}$/.test(t))return false;   // every word upper-case
     if(/\b(CV|RESUME|CURRICULUM|VITAE|PROFILE|REFERENCES?)\b/.test(t))return false;
+    if(NAME_STOP_RE.test(t))return false;             // "MARKETING MANAGER" banner, not a person
     return true;
   };
   for(const raw of lines.slice(0,50)){if(isCapsName(raw))return norm(raw);}
@@ -2037,6 +2164,7 @@ function titleAfterName(lines,name){
     if(!t||isHeader(t))break;
     if(/\d|@|linkedin\.com|\+\d/i.test(t))break;     // contact / date line
     if(LOCATION_RE.test(t))break;                    // location line ("Riyadh, Saudi Arabia") is not a title
+    if(/:\s*$/.test(t)||/\s:\s/.test(t))break;       // sidebar label(s) ("CONTACT : SUMMARY :"), not a role
     if(/[.!?]$/.test(t)||t.split(/\s+/).length>6)break;   // sentence / too long for a role
     out.push(t);
     if(out.length>=2)break;
@@ -2067,6 +2195,21 @@ function nameFromContacts(linkedin,email){
       if(parts.length>=2&&parts.length<=4)return titleize(parts);
     }
   }
+  return'';
+}
+// Very last resort: people overwhelmingly name the file after themselves
+// ("Pamela Resumee 2026.pdf", "MohamadSinno_CV_final.pdf"). Strip CV/resume/date
+// noise; if what remains is 1–4 clean name words, use them.
+function nameFromFilename(fname){
+  if(!fname)return'';
+  let s=fname.replace(/\.[a-z0-9]+$/i,'')
+    .replace(/(?<=[a-z])(?=[A-Z])/g,' ')             // "MohamadSinno" → "Mohamad Sinno"
+    .replace(/[-_.()\[\]]+/g,' ')
+    .replace(/\b(cv|resumee?|resume|curriculum|vitae|final|updated?|latest|copy|new|exec|version|draft|untitled|document|scan|file|whatsapp|image|pdf|en|english|ar|arabic|hr|rs|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\b/ig,' ')
+    .replace(/\d+/g,' ').replace(/\s{2,}/g,' ').trim();
+  const parts=s.split(/\s+/).filter(p=>/^[A-Za-z'’\-]{3,}$/.test(p));
+  if(parts.length>=1&&parts.length<=4&&!parts.some(p=>NAME_STOP_RE.test(p)))
+    return parts.map(p=>p.charAt(0).toUpperCase()+p.slice(1).toLowerCase()).join(' ');
   return'';
 }
 function guessTitle(lines,name){
@@ -2104,17 +2247,28 @@ function extractJobs(lines){
   // that is essentially nothing but a single date token. NOT a prose line that
   // merely happens to contain a year.
   const RANGE_RE=new RegExp(DTOK+'(?:\\s*(?:–|—|-|to|till|until)\\s*)+'+DTOK,'i');   // allow "May 2026 – till Present"
+  // Month-without-year start ("4 January – Present") — only valid when the range
+  // ENDS in present/current, so prose like "January to March" can't anchor a job.
+  const MTOK='(?:\\d{1,2}\\s+)?(?:'+MONTHS+')[a-z]*\\.?';
+  const RANGE2_RE=new RegExp('\\b'+MTOK+'\\s*(?:–|—|-|to|till|until)\\s*(?:present|current|ongoing)\\b','i');
   const SINGLE_RE=new RegExp('^\\s*'+DTOK+'(?:\\s*(?:–|—|-)\\s*(?:present|current))?\\s*$','i');
   function isDateLine(l){
-    if(RANGE_RE.test(l))return true;          // a real date RANGE anchors a job even on a long header line
+    if(RANGE_RE.test(l)||RANGE2_RE.test(l)){
+      // a real date RANGE anchors a job even on a long header line — but NOT when
+      // the range sits inside prose ("…expanded the franchise model between 2018 –
+      // 2021, growing…"): a wrapped fragment starts lowercase, a sentence runs long.
+      if(/^[a-z]/.test(l)||l.length>110||(/[.!?]$/.test(l)&&l.length>70))return false;
+      return true;
+    }
     if(l.length>46)return false;
     return SINGLE_RE.test(l);
   }
   function rangeDates(l){
-    const pick=seg=>{if(presentRe.test(seg))return'Present';const m=seg.match(monthYear);return m?m[0].replace(/\s+/g,' ').trim():'';};
+    const pick=seg=>{if(presentRe.test(seg))return'Present';const m=seg.match(monthYear);if(m)return m[0].replace(/\s+/g,' ').trim();
+      const mo=seg.match(new RegExp('(?:'+MONTHS+')[a-z]*','i'));return mo?mo[0].replace(/^./,c=>c.toUpperCase()):'';};
     // Isolate the explicit "date – date" span FIRST so a dash inside the title
     // ("Teaching Assistant – CHEN 201 … Jan 2026 – May 2026") can't hijack the split.
-    const rm=l.match(RANGE_RE);
+    const rm=l.match(RANGE_RE)||l.match(RANGE2_RE);
     const seg=rm?rm[0]:l;
     const parts=seg.split(/\s*(?:–|—|-|to|until|till)\s*/i).map(x=>x.trim()).filter(Boolean);
     if(parts.length>=2)return{from:pick(parts[0]),to:pick(parts[parts.length-1])};
@@ -2124,23 +2278,31 @@ function extractJobs(lines){
   function parseHeader(text){
     text=(text||'').replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢\s]+/,'').replace(/\s{2,}/g,' ').trim();
     if(!text)return{title:'',company:''};
-    let title='',company='';
+    let title='',company='',viaDash=false;
     const at=text.split(/\s+(?:at|@|،|\|)\s+/i);
     if(at.length>=2){title=at[0];company=at.slice(1).join(' ');}
-    else{const c=text.split(/\s*[,\-–—|]\s*/);title=c[0]||text;company=c[1]||'';}
+    else{
+      const c=text.split(/\s*[,–—|]\s*|\s+-\s+/).map(x=>x.trim()).filter(Boolean);
+      // The role can sit in ANY part ("Burj Al Hamam – KSA – Area Manager"): take
+      // the part carrying a role word as the title and the first part as company.
+      const ri=c.findIndex(p=>ROLE_RE.test(p));
+      if(ri>0){title=c[ri];company=c[0];}
+      else{title=c[0]||text;company=c[1]||'';viaDash=c.length>1;}
+    }
     company=company.replace(/\s*,\s*[^,]+$/,'').replace(/^[|,\-–—\s]+|[|,\-–—\s]+$/g,'').trim();   // drop trailing ", City" + stray separators
     title=title.replace(/^[|,\-–—\s]+|[|,\-–—\s]+$/g,'').trim();
-    return{title,company};
+    return{title,company,viaDash};
   }
   function headerFromDateLine(l){
     // Remove the date RANGE as a whole first (so its internal dash goes with it),
     // then stray date tokens — but KEEP the title/company "—" separator so an
     // inline header like "Title — Company 2016-2018" still splits correctly.
-    let s=l;const rm=l.match(RANGE_RE);if(rm)s=s.replace(rm[0],' ');
+    let s=l;const rm=l.match(RANGE_RE)||l.match(RANGE2_RE);if(rm)s=s.replace(rm[0],' ');
     s=s.replace(new RegExp(DTOK,'ig'),' ')
       .replace(new RegExp(presentRe.source,'ig'),' ')
       .replace(/\b(?:till|until|to|since|from)\b/ig,' ')   // connector words ("May 2026 – till Present")
       .replace(/\d{1,2}\s*[-\/.]\s*(?=\d)/g,' ')           // stray "10/" / "02-" remnants
+      .replace(/\b\d{1,2}\s*[\/.](?!\d)/g,' ')             // orphaned "01/" with its year already removed
       .replace(/\s{2,}/g,' ').trim().replace(/^[|,\-–—\s]+|[|,\-–—\s]+$/g,'').trim();
     if(s.replace(/[^A-Za-z]/g,'').length<2)return{title:'',company:''};  // only dates → no inline header
     return parseHeader(s);
@@ -2148,9 +2310,20 @@ function extractJobs(lines){
   // Role lexicon + location matcher — to split a "title-first" header block where
   // the role title sits on its own line above a "Company City, Country" line.
   const ROLE_RE=/\b(manager|supervisor|director|head|chef|waitress|waiter|agent|coordinator|leader|officer|assistant|consultant|engineer|analyst|executive|specialist|administrator|receptionist|cashier|host|hostess|barista|bartender|sommelier|captain|steward|stewardess|attendant|representative|associate|clerk|technician|designer|developer|accountant|teacher|trainer|nurse|driver|operator|planner|controller|secretary|intern|apprentice|foreman|owner|founder|partner|president|principal|lead|architect|writer|editor|photographer|videographer|marketer|recruiter|buyer|merchandiser|estimator|surveyor|paralegal|pharmacist|therapist|dietitian|waitstaff)\b/i;
-  const LOC_WORDS=[...Object.keys(CITY_CODES),'ksa','uae','lebanon','saudi arabia','qatar','kuwait','bahrain','oman','jordan','egypt','syria','iraq','libya','tunisia','morocco','algeria','dbayeh','faqra','jounieh','zahle','sidon','tyre','byblos','achrafieh','hamra'];
+  const LOC_WORDS=[...Object.keys(CITY_CODES),'ksa','uae','lebanon','saudi arabia','qatar','kuwait','bahrain','oman','jordan','egypt','syria','iraq','libya','tunisia','morocco','algeria','dbayeh','faqra','jounieh','zahle','sidon','tyre','byblos','achrafieh','hamra','middle east','gcc','mena','europe','uk','united kingdom','usa','london'];
   const LOC_RE=new RegExp('\\b('+LOC_WORDS.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')\\b','i');
-  const deSpace=s=>(s||'').replace(/\b((?:[A-Za-z] ){2,}[A-Za-z])\b/g,m=>m.replace(/ /g,''));  // "B e i r u t" → "Beirut"
+  // Legal/organizational vocabulary that marks a line as a COMPANY name.
+  const ORG_RE=/\b(co|company|corp|corporation|inc|llc|ltd|group|holding|holdings|trading|industries|industry|international|intl|solutions|services|consulting|consultancy|agency|bank|hotel|resort|restaurant|cafe|university|college|school|hospital|clinic|factory|store|fzc|fzco|sal|sarl|llp|plc|est|establishment|technologies|gmbh)\b\.?/i;
+  // "Doha, Qatar" / "Forzol, Lebanon |" — a header remnant that is ONLY a location:
+  // after removing every known city/country, at most ONE unknown word remains
+  // (a small town). "Echelon Digital Company Riyadh, KSA" leaves three → a company.
+  const isLocOnlyTxt=s=>{
+    const t=(s||'');
+    if(!LOC_RE.test(t))return false;
+    const leftover=t.replace(new RegExp(LOC_RE.source,'ig'),' ').replace(/[|,–—\-.\s]+/g,' ').trim();
+    return leftover.split(/\s+/).filter(Boolean).length<=1;
+  };
+  const deSpace=s=>(s||'').replace(/\b((?:[A-Za-z0-9] ){2,}[A-Za-z0-9])\b/g,m=>m.replace(/ /g,''));  // "B e i r u t" → "Beirut", "2 0 2 3" → "2023"
   const stripLoc=s=>{                          // cut a "Company City, Country" tail → just the company
     s=deSpace((s||'').replace(/\s+/g,' ').trim());
     const m=s.match(LOC_RE);
@@ -2184,7 +2357,7 @@ function extractJobs(lines){
   // date line — inline on it, on the line BELOW it (date-first layout) or the line
   // ABOVE it (title-first layout). Then collect the duties between consecutive jobs
   // and stitch line-wrapped sentences back together.
-  let L=lines.map(x=>x.trim()).filter(Boolean);
+  let L=lines.map(x=>deSpace(x.trim())).filter(Boolean);   // repair letter-tracked lines ("A p r i l 2 0 2 3")
   // Re-join a header that wrapped onto a second line carrying the date, e.g.
   // "Epidemiology Research — Massachusetts College … Sciences" + "(MCPHS) 2021-2024".
   // The continuation begins with a parenthetical and the line above is a dateless,
@@ -2198,9 +2371,19 @@ function extractJobs(lines){
   },[]);
   const dateAt=L.map((l,i)=>(!isBullet(l)&&isDateLine(l))?i:-1).filter(i=>i>=0);
   if(!dateAt.length)return[];
+  const extraUsed=new Set();                                // header lines consumed off the date line → not duties
   const anchors=dateAt.map(di=>{
     const {from,to}=rangeDates(L[di]);
     let h=headerFromDateLine(L[di]),pos='inline',hIdx=di;   // header on the date line itself?
+    // An inline remnant that is ONLY a location ("Doha, Qatar |") is NOT a header —
+    // the real title/company block sits above ("Company ⏎ Title ⏎ Location | date").
+    // Keep its non-location prefix as a company-of-last-resort hint ("Acme Riyadh, KSA" → "Acme").
+    let companyHint='';
+    if((h.title||h.company)&&isLocOnlyTxt([h.title,h.company].filter(Boolean).join(', '))){
+      const hv=stripLoc([h.title,h.company].filter(Boolean).join(', '));
+      if(hv&&!isLocOnlyTxt(hv)&&!ROLE_RE.test(hv)&&hv.replace(/[^A-Za-z]/g,'').length>=3)companyHint=hv;
+      h={title:'',company:''};
+    }
     if(!h.title&&!h.company){                               // …else in the header block directly ABOVE
       // Walk up collecting the contiguous header lines (title / company / optional
       // tagline). A title-first CV stacks "Area Manager" over "Jones The Grocer KSA
@@ -2210,7 +2393,8 @@ function extractJobs(lines){
       for(let j=di-1;j>=0&&block.length<4;j--){
         const l=L[j];
         if(!l||dateAt.includes(j)||isBullet(l)||isHeader(l))break;
-        if(/[.!?:]$/.test(l)||l.length>85||(DUTY_VERB.test(l)&&!ROLE_RE.test(l)))break;
+        if(/@|linkedin\.com|www\.|https?:/i.test(l))break;                // contact line is never a job header
+        if(/[.!?:]$/.test(l)||l.length>110||(DUTY_VERB.test(l)&&!ROLE_RE.test(l)))break;
         block.unshift(l);
       }
       if(block.length){
@@ -2231,8 +2415,39 @@ function extractJobs(lines){
     }
     if(!h.title&&!h.company){                               // …else on the line directly BELOW (date-first)
       const bi=di+1;
-      if(bi<L.length&&!dateAt.includes(bi)&&looksJobHeader(L[bi])){h=parseHeader(L[bi]);pos='below';hIdx=bi;}
+      if(bi<L.length&&!dateAt.includes(bi)&&looksJobHeader(L[bi])&&!isLocOnlyTxt(L[bi])){h=parseHeader(L[bi]);pos='below';hIdx=bi;}
     }
+    // ── repair & enrich an INLINE header from its neighbour lines ──
+    const lineOK=j=>j>=0&&j<L.length&&!dateAt.includes(j)&&!extraUsed.has(j);
+    const roleLn=l=>!!l&&!isBullet(l)&&!isHeader(l)&&!isDateLine(l)&&!/[.!?:]$/.test(l)&&l.length<=70
+      &&ROLE_RE.test(l)&&!(DUTY_VERB.test(l)&&!/^[A-Z]/.test(l));
+    const companyLn=l=>{
+      if(!l||isBullet(l)||isHeader(l)||isDateLine(l)||/[.!?:]$/.test(l)||l.length>70)return false;
+      if(/@|linkedin\.com|www\.|https?:/i.test(l))return false;          // contact line, not a company
+      if((DUTY_VERB.test(l)&&!ORG_RE.test(l))||ROLE_RE.test(l))return false;
+      return ORG_RE.test(l)||LOC_RE.test(l)||/\|/.test(l)||(/^[A-Z0-9]/.test(l)&&l.split(/\s+/).length<=6);
+    };
+    if(pos==='inline'&&(h.title||h.company)){
+      const clean=j=>deSpace(L[j].replace(/\s{2,}/g,' ').trim());
+      if(h.company&&isLocOnlyTxt(h.company))h.company='';     // "Title — Riyadh, KSA" → drop the location
+      if(h.title&&!h.company&&!ROLE_RE.test(h.title)){
+        // inline part is actually the COMPANY ("Software Design Consulting Group, KSA Aug 2023 –…")
+        // and the role sits on a neighbour line → swap them.
+        for(const j of[di+1,di-1])if(lineOK(j)&&roleLn(L[j])){h.company=stripLoc(h.title);h.title=clean(j);extraUsed.add(j);break;}
+      }
+      if(h.title&&!h.company){                                // company on the line above/below —
+        const cands=[di-1,di+1].filter(j=>lineOK(j)&&companyLn(L[j]));
+        const strong=cands.filter(j=>ORG_RE.test(L[j])||/\|/.test(L[j]));   // prefer an org-looking line
+        const best=strong.length?strong[0]:cands[0];
+        if(best!==undefined){h.company=stripLoc(L[best]);extraUsed.add(best);}
+      }else if(h.title&&h.company&&h.viaDash&&!ORG_RE.test(h.company)&&!LOC_RE.test(h.company)){
+        // dash-split tore a compound title ("Director – Procurement & Supply Chain");
+        // a STRONG company candidate on a neighbour line restores it.
+        for(const j of[di-1,di+1])if(lineOK(j)&&companyLn(L[j])&&(ORG_RE.test(L[j])||/\|/.test(L[j]))){
+          h.title=h.title+' – '+h.company;h.company=stripLoc(L[j]);extraUsed.add(j);break;}
+      }
+    }
+    if(h.title&&!h.company&&companyHint)h.company=companyHint;  // salvage from the discarded location remnant
     if(!h.title&&!h.company)pos='none';
     return {di,from,to,h,pos,hIdx};
   });
@@ -2244,6 +2459,7 @@ function extractJobs(lines){
     const raw=[];
     for(let j=dutyStart;j<end;j++){
       const l=L[j];
+      if(extraUsed.has(j))continue;                         // consumed as a neighbouring job header
       if(!l||isSubHeading(l)||(!isBullet(l)&&isDateLine(l)))continue;
       const t=l.replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢\s]+/,'').replace(/\s{2,}/g,' ').trim();
       if(t&&t.replace(/\s/g,'').length>=2)raw.push(t);
@@ -2296,7 +2512,7 @@ const EDU_LEVEL_RE=/(ph\.?\s?d|doctorate|master[''`]?s?|m\.?sc|mba|m\.?a\b|bache
 // Institution keyword as a WHOLE word, so "Highschool"/"Internship" don't false-match.
 const EDU_INST_RE=/\b(universit\w*|college|institute|institut|polytechnic|academy|faculty)\b|\bschool\b|جامعة|كلية|معهد/i;
 const EDU_LOC_RE=/\b(lebanon|saudi arabia|ksa|uae|united arab emirates|qatar|kuwait|bahrain|oman|jordan|egypt|syria|iraq|france|germany|spain|italy|usa|uk|united kingdom|canada|turkey|cyprus|india|pakistan)\b/i;
-const EDU_DATE_RE=/(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)\d{2}\s*(?:[–—-]|to|till|until)\s*(?:present|current|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)\d{2})/i;
+const EDU_DATE_RE=/(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*|\d{1,2}\s*[\/.]\s*)?(?:19|20)\d{2}\s*(?:[–—-]|to|till|until)\s*(?:present|current|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*|\d{1,2}\s*[\/.]\s*)?(?:19|20)\d{2})/i;
 const EDU_YEAR_RE=/\b(19|20)\d{2}\b/;
 // Parse the education block into a LIST of entries. A single entry can be laid out
 // degree-first ("BSc / Computer Science / MIT / 2018") OR institution-first ("AUB |
@@ -2340,6 +2556,7 @@ function parseEduList(lines){
   // Remove the date range (and stray years) from the WHOLE line FIRST, so the
   // dash-splitter below can't tear "Sep.2022 – May 2027" into a stray "May" atom.
   const atomize=l=>(l||'').replace(EDU_DATE_RE,' ').replace(/\b(19|20)\d{2}\b/g,' ')
+    .replace(/\b\d{1,2}\s*[\/.](?=\s|$)/g,' ')               // stray "01/" left by a numeric date
     .split(/\s*\|\s*|\s+[–—]\s+|\s+-\s+|\s{2,}/).map(stripA).filter(Boolean);
   const isLoc=a=>EDU_LOC_RE.test(a)||/^[A-Z][a-z]+,\s*[A-Z]/.test(a);
   const entries=groups.map(grp=>{
