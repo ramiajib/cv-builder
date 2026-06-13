@@ -258,8 +258,8 @@ const T={
     efNationality:'Nationality',efVisa:'Visa / Residency status',
     efCerts:'Certifications (one per line)',efTraining:'Training & Courses (one per line)',
     efAch:'Achievements (one per line)',efVol:'Volunteer experience (one per line)',
-    secSum:'Professional Summary',secExp:'Work Experience',secEdu:'Education',secSki:'Skills',secLng:'Languages',
-    secCert:'Certifications',secTrain:'Training & Courses',secAch:'Achievements',secVol:'Volunteer Experience',
+    secSum:'Professional Summary',secExp:'Professional Experience',secEdu:'Education',secSki:'Core Competencies',secLng:'Languages',
+    secCert:'Certifications',secTrain:'Training & Courses',secAch:'Key Achievements',secVol:'Volunteer Experience',
     err_empty:'Please type something to continue.',
     err_email:'Please enter a valid email address.',
     err_year: 'Please enter a valid year (e.g. 2021).',
@@ -748,7 +748,10 @@ function capFirst(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
 function hashStr(s){let h=0;for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))|0;}return Math.abs(h);}
 const PAST_IRR={make:'made',take:'took',drive:'drove',keep:'kept',sell:'sold',build:'built',lead:'led',run:'ran',do:'did',write:'wrote',send:'sent',deal:'dealt',meet:'met',hold:'held',pay:'paid',read:'read',leave:'left',speak:'spoke',oversee:'oversaw',draw:'drew',grow:'grew',win:'won',cost:'cost',hit:'hit',set:'set',cut:'cut',put:'put',get:'got',give:'gave',teach:'taught',buy:'bought',bring:'brought',find:'found',sweep:'swept',mean:'meant',wear:'wore',
   plan:'planned',stop:'stopped',ship:'shipped',chop:'chopped',mop:'mopped',scrub:'scrubbed',wrap:'wrapped',log:'logged',tag:'tagged',map:'mapped',grab:'grabbed',plot:'plotted',fit:'fitted'};
-const BASE_VERBS=new Set('manage handle prepare cook clean serve sell drive deliver answer help assist organize arrange schedule train supervise lead coordinate maintain repair install build create design write edit film shoot photograph operate monitor track record enter process calculate count stock order purchase negotiate plan develop execute support resolve respond greet welcome check inspect test taste cut chop wash package load unload transport collect distribute file type print scan update review audit reconcile teach mentor guide run oversee direct control set fix replace paint weld wire bake grill fry mix measure weigh pack make take keep send meet hold pay clean cover lift carry stack sort label pack ring scan stamp sign draft compile gather'.split(' '));
+const BASE_VERBS=new Set(('manage handle prepare cook clean serve sell drive deliver answer help assist organize arrange schedule train supervise lead coordinate maintain repair install build create design write edit film shoot photograph operate monitor track record enter process calculate count stock order purchase negotiate plan develop execute support resolve respond greet welcome check inspect test taste cut chop wash package load unload transport collect distribute file type print scan update review audit reconcile teach mentor guide run oversee direct control set fix replace paint weld wire bake grill fry mix measure weigh pack make take keep send meet hold pay clean cover lift carry stack sort label pack ring scan stamp sign draft compile gather'
+  // professional vocabulary from the reference CV set — used to recognize (and
+  // tense-normalize) bullet openers in uploaded CVs
+  +' achieve ensure analyze analyse recruit implement increase reduce improve generate launch establish conduct perform spearhead identify evaluate present facilitate administer document research configure deploy liaise collaborate contribute participate attend complete gain act communicate strengthen expand scale restructure transform align partner engage foster leverage streamline optimize optimise enhance assess advise source procure promote hire win utilize utilise champion standardize standardise renegotiate redesign rebuild relaunch overhaul diagnose secure mobilize mobilise mediate represent enforce decrease minimize minimise maximize maximise consolidate integrate automate digitize digitise').split(' '));
 const DUTY_GENERIC_VERBS=['Handled','Managed','Oversaw','Coordinated','Carried out'];
 const DUTY_SUFFIX=[
   'ensuring consistent quality and full adherence to company standards',
@@ -793,16 +796,130 @@ function fixHyphenSpacing(s){
     .replace(/([A-Za-z0-9]{1,})\s*[\-–—]\s+([a-z]{2,})/g,'$1-$2')   // word- word → word-word
     .replace(/\s{2,}/g,' ');
 }
-function enhanceDuty(raw,preserve){
+/* ── Upload bullet rewrite → the STANDARD professional shape ──
+   The reference CV set ("CV md") shows the structure every strong CV follows:
+   bullets open with an action verb (PAST tense for past roles), never with
+   "Responsible for…", "Duties included…" or first-person filler. These
+   transforms rewrite the candidate's own bullet into that shape while keeping
+   every fact, figure and phrase intact. */
+const GERUND_PAST={managing:'Managed',overseeing:'Oversaw',leading:'Led',working:'Worked',supervising:'Supervised',
+  coordinating:'Coordinated',handling:'Handled',developing:'Developed',creating:'Created',designing:'Designed',
+  implementing:'Implemented',supporting:'Supported',assisting:'Assisted',preparing:'Prepared',providing:'Provided',
+  delivering:'Delivered',building:'Built',establishing:'Established',maintaining:'Maintained',monitoring:'Monitored',
+  analyzing:'Analyzed',analysing:'Analysed',conducting:'Conducted',performing:'Performed',executing:'Executed',
+  organizing:'Organized',organising:'Organised',negotiating:'Negotiated',mentoring:'Mentored',driving:'Drove',
+  increasing:'Increased',reducing:'Reduced',improving:'Improved',achieving:'Achieved',ensuring:'Ensured',
+  growing:'Grew',spearheading:'Spearheaded',launching:'Launched',directing:'Directed',operating:'Operated',
+  producing:'Produced',generating:'Generated',collaborating:'Collaborated',liaising:'Liaised',reviewing:'Reviewed',
+  auditing:'Audited',recruiting:'Recruited',hiring:'Hired',selling:'Sold',promoting:'Promoted',serving:'Served',
+  teaching:'Taught',resolving:'Resolved',responding:'Responded',sourcing:'Sourced',procuring:'Procured',
+  purchasing:'Purchased',streamlining:'Streamlined',optimizing:'Optimized',optimising:'Optimised',
+  enhancing:'Enhanced',identifying:'Identified',evaluating:'Evaluated',assessing:'Assessed',advising:'Advised',
+  presenting:'Presented',facilitating:'Facilitated',administering:'Administered',documenting:'Documented',
+  writing:'Wrote',editing:'Edited',researching:'Researched',collecting:'Collected',gathering:'Gathered',
+  entering:'Entered',updating:'Updated',installing:'Installed',repairing:'Repaired',configuring:'Configured',
+  helping:'Helped',taking:'Took',making:'Made',running:'Ran',winning:'Won',leveraging:'Leveraged',
+  partnering:'Partnered',engaging:'Engaged',fostering:'Fostered',strengthening:'Strengthened',
+  expanding:'Expanded',scaling:'Scaled',overhauling:'Overhauled',restructuring:'Restructured',
+  transforming:'Transformed',aligning:'Aligned',contributing:'Contributed',participating:'Participated',
+  attending:'Attended',completing:'Completed',gaining:'Gained',acting:'Acted',communicating:'Communicated',
+  cooking:'Cooked',cleaning:'Cleaned',inspecting:'Inspected',testing:'Tested',onboarding:'Onboarded',
+  training:'Trained',planning:'Planned',marketing:'Marketed',reporting:'Reported',scheduling:'Scheduled',
+  tracking:'Tracked',processing:'Processed',stocking:'Stocked',ordering:'Ordered',budgeting:'Budgeted',
+  forecasting:'Forecast',drafting:'Drafted',diagnosing:'Diagnosed',securing:'Secured',representing:'Represented'};
+// Lead words that are as often NOUNS as verbs in a CV ("Stock control",
+// "Track record", "Plan administration", "Training sessions") — converted only
+// when coordination with a second, unambiguous verb proves the line is a verb
+// phrase ("Plan and coordinate menus" → "Planned and coordinated menus").
+const AMBIG_LEAD=new Set(['plan','planning','plans','stock','stocking','stocks','order','ordering','orders',
+  'report','reporting','reports','track','tracking','tracks','record','recording','records','control','controls',
+  'market','marketing','markets','training','trains','file','filing','files','type','typing','print','printing',
+  'scan','scanning','set','setting','sets','cover','covering','covers','sign','signing','signs','pack','packing',
+  'load','loading','sort','sorting','label','labeling','ring','stamp','process','processing','schedule',
+  'scheduling','schedules','guide','guides','measure','measures','mix','taste','budget','budgeting',
+  'forecast','forecasting','draft','drafting','contract','contracting']);
+// First word of a bullet → its past-tense form, or null when it isn't
+// confidently a verb. `allowAmbig` is set once surrounding coordination has
+// already proven the line is a verb phrase.
+function leadPast(word,allowAmbig){
+  const lw=(word||'').toLowerCase().replace(/[^a-z]/g,'');
+  if(!lw||(!allowAmbig&&AMBIG_LEAD.has(lw)))return null;
+  if(GERUND_PAST[lw])return GERUND_PAST[lw];
+  if(BASE_VERBS.has(lw))return capFirst(pastTense(lw));
+  if(/[a-rt-z]s$/.test(lw)){                       // 3rd person: "Ensures" → "Ensured"
+    const a=lw.slice(0,-1),b=/es$/.test(lw)?lw.slice(0,-2):null;
+    if(BASE_VERBS.has(a)&&(allowAmbig||!AMBIG_LEAD.has(a)))return capFirst(pastTense(a));
+    if(b&&BASE_VERBS.has(b)&&(allowAmbig||!AMBIG_LEAD.has(b)))return capFirst(pastTense(b));
+  }
+  return null;
+}
+// Convert one token, keeping its trailing punctuation ("Recruit," → "Recruited,")
+function convTok(tok,allowAmbig){
+  const m=(tok||'').match(/^([A-Za-z]+)([^A-Za-z]*)$/);
+  if(!m)return null;
+  const p=leadPast(m[1],allowAmbig);
+  return p?p+(m[2]||''):null;
+}
+// Normalize a bullet's leading verb chain to past tense: "Manage budgets…" →
+// "Managed budgets…", "Recruit, train and develop staff" → "Recruited, trained
+// and developed staff", "Working with vendors…" → "Worked with vendors…".
+// Anything not confidently a verb phrase is left untouched.
+function tensePast(t){
+  const lab=t.match(/^[A-Z][A-Za-z &\/\-]{1,40}:\s+(?=[A-Za-z])/);   // "Brand Strategy: Develop …" → keep the label
+  if(lab)return t.slice(0,lab[0].length)+tensePast(t.slice(lab[0].length));
+  const toks=t.split(/\s+/);
+  if(toks.length<2)return t;
+  const lower=s=>s.replace(/^[A-Z](?=[a-z])/,c=>c.toLowerCase());
+  let first=convTok(toks[0],false);
+  if(!first&&/^(and|&)$/i.test(toks[1]||'')&&convTok(toks[2]||'',false))
+    first=convTok(toks[0],true);                   // "Plan and coordinate …" — coordination proves the verb
+  if(!first)return t;
+  toks[0]=first;
+  for(let i=1;i<toks.length;i++){                  // continue along the verb chain
+    if(/^(and|&)$/i.test(toks[i])){
+      const c=convTok(toks[i+1]||'',true);
+      if(c){toks[i+1]=lower(c);i++;continue;}
+      break;
+    }
+    if(/,$/.test(toks[i-1])){
+      const c=convTok(toks[i],true);
+      if(c){toks[i]=lower(c);continue;}
+      break;
+    }
+    break;
+  }
+  return toks.join(' ');
+}
+// Rewrite one uploaded bullet into the standard shape. Strips first-person and
+// "Responsible for…" filler, then normalizes the opening verb(s) to past tense
+// for PAST roles (current roles keep present-tense / gerund openers — both are
+// standard). The candidate's facts and wording are preserved.
+const RESP_OPENER=/^(?:(?:was|were|is|am|are)\s+)?(?:also\s+)?(?:(?:responsible|accountable)\s+for|in\s+charge\s+of|tasked\s+with)\s+|^(?:my\s+|main\s+)?(?:duties|responsibilities|tasks|role)\s+includ(?:ed|es?)\s*:?\s*/i;
+function rewriteBullet(t,isCurrent){
+  t=t.replace(/^(?:i|we)\s+(?:also\s+)?/i,'');     // first person → drop
+  const resp=t.match(RESP_OPENER);
+  if(resp){
+    t=t.slice(resp[0].length).trim().replace(/^[,:;\-–—\s]+/,'');
+    const lw=(t.split(/\s+/)[0]||'').toLowerCase().replace(/[^a-z]/g,'');
+    // "…for managing X" → verb opener; "…for the X" → give it one
+    if(!GERUND_PAST[lw]&&!BASE_VERBS.has(lw))
+      t=(isCurrent?'Oversee ':'Oversaw ')+t.replace(/^[A-Z](?=[a-z])/,c=>c.toLowerCase());
+    else t=capFirst(t);
+  }
+  if(!isCurrent)t=tensePast(t);
+  return t.replace(/\s{2,}/g,' ').replace(/[\s;,.]+$/,'').trim();
+}
+
+function enhanceDuty(raw,preserve,isCurrent){
   if(!raw)return'';
   const fixed=fixHyphenSpacing(fixSpell(raw.trim()));
   // Uploaded CVs already contain the candidate's real, specific achievements
-  // (often quantified). Preserve EVERY real bullet verbatim (spell-fixed +
-  // capitalized) — never replace it with generic canned text or a keyword-matched
-  // template, which would destroy the strongest content on the page.
+  // (often quantified). Keep every fact verbatim, but REWRITE the bullet into
+  // the standard professional shape (action-verb opener, correct tense, no
+  // filler) — see rewriteBullet above.
   if(preserve){
-    const clean=fixed.replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢«»●0]+\s+(?=[A-Za-z])/,'').replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢\s]+/,'').replace(/\s{2,}/g,' ').trim();
-    if(clean.split(/\s+/).filter(Boolean).length>=2)return capFirst(clean);
+    const clean=fixed.replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢✔✓«»●0]+\s+(?=[A-Za-z])/,'').replace(/^[•\-\*▪◦·‣●○■□▸►▶◆✦➢✔✓\s]+/,'').replace(/\s{2,}/g,' ').trim();
+    if(clean.split(/\s+/).filter(Boolean).length>=2)return capFirst(rewriteBullet(clean,isCurrent));
     return'';                                         // drop stray single-word fragments
   }
   // From-scratch flow: typed input is terse, so expand it into a polished bullet.
@@ -915,6 +1032,29 @@ function enhanceSummary(raw){
   if(base.replace(/\s/g,'').length<40)return null;
   if(!/[.!?]$/.test(base))base+='.';
   return base;
+}
+
+// Rewrite an uploaded summary into the STANDARD profile formula every strong CV
+// in the reference set opens with: "[Title] with [N]+ years of experience in
+// [areas]. …". The candidate's own text is kept whenever it already follows
+// that shape; otherwise the standard opener is prefixed. When the upload
+// carried no summary at all, a full standard paragraph is generated from the
+// parsed title, computed years, skills and most recent role.
+function standardSummary(own,title,yrs,skills,jobs){
+  const t=(title||'').trim()||'Professional';
+  const areas=(skills||[]).slice(0,3).join(', ');
+  const opener=`${t} with ${yrs} of experience${areas?` in ${areas}`:''}.`;
+  if(own){
+    const first=(own.match(/^[^.!?]{0,180}[.!?]?/)||[own])[0];
+    const standardish=/\b\d{1,2}\s*\+?\s*(?:years?|yrs)\b/i.test(first)               // "…with 16+ years…"
+      ||/^[A-Z][^.!?]{0,100}\b(?:professional|graduate|student|leader|executive|specialist|expert|manager|director|engineer|consultant|accountant|coordinator|analyst)\b/i.test(first)  // "Operations-focused leader …"
+      ||/\bexperienced?\b/i.test(first);                                              // "Experienced professional in …"
+    if(standardish)return own;
+    return opener+' '+own;
+  }
+  const j0=jobs&&jobs[0];
+  const recent=j0?` Most recently ${j0.title||'serving'}${j0.company?` at ${j0.company}`:''}, with a proven track record of delivering consistent, high-quality results.`:'';
+  return opener+recent+' Recognized for professionalism, reliability, and a strong commitment to continuous improvement.';
 }
 
 function pdfFilename(name){
@@ -1182,13 +1322,22 @@ function cvData(){
   const skillGroups=parseSkillGroups(cv.skills);
   const skills=skillGroups.flatMap(g=>g.items);   // flat list (summary template + tag fallback)
 
-  const jobs=cv.jobs.map(j=>({
-    company:cleanCompany(j.company),
-    title:cleanTitle(j.title),
-    from:tCase(j.from.trim()),
-    to:tCase(fixSpell(j.to.trim())),
-    duties:j.duties.map(d=>enhanceDuty(d,cv._fromUpload)).filter(Boolean),
-  }));
+  const jobs=cv.jobs.map(j=>{
+    const isCurrent=/present|current|ongoing|now|حتى الآن/i.test(j.to||'');
+    const seen=new Set();
+    return{
+      company:cleanCompany(j.company),
+      title:cleanTitle(j.title),
+      from:tCase(j.from.trim()),
+      to:tCase(fixSpell(j.to.trim())),
+      duties:j.duties.map(d=>enhanceDuty(d,cv._fromUpload,isCurrent)).filter(d=>{
+        if(!d)return false;
+        const k=d.toLowerCase();                   // drop exact repeats within a job
+        if(seen.has(k))return false;
+        seen.add(k);return true;
+      }),
+    };
+  });
 
   // Education — support multiple entries; hide field when redundant with level
   const fmtEdu=(level,field,inst,year)=>{
@@ -1220,13 +1369,16 @@ function cvData(){
   // ("Fluent in English and Arabic; elementary proficiency in French").
   const langs=parseLanguages(cv.langs);
 
-  // Summary — for uploads keep the candidate's own words (cleaned, no filler);
-  // for the from-scratch flow generate a polished template.
+  // Summary — uploads are rewritten into the STANDARD profile formula
+  // (standardSummary keeps the candidate's own words when they already follow
+  // it); the from-scratch flow generates a polished template.
   const yrsIdx=s().yrs.indexOf(cv.yearsExp);
   const yrsEn=yrsIdx>=0?E.yrs[yrsIdx]:cv.yearsExp;
   const ownSummary=(cv.summary||'').trim();
-  const enhanced=(cv._fromUpload&&ownSummary.length>=40)?enhanceSummary(ownSummary):null;
-  const summary=enhanced||E.sumTpl(title,yrsEn,jobs.length?jobs[0].company:'',skills);
+  const cleanedOwn=ownSummary.length>=40?enhanceSummary(ownSummary):null;
+  const summary=cv._fromUpload
+    ?standardSummary(cleanedOwn,title,yrsEn,skills,jobs)
+    :E.sumTpl(title,yrsEn,jobs.length?jobs[0].company:'',skills);
 
   return {name,title,city,email,phone,phone2,linkedin,relocate,nationality,visa,
     skills,skillGroups,jobs,edu,eduList,langs,summary,
@@ -1313,29 +1465,45 @@ function cvHTML(){
     <div style="font-size:11.5px;color:${MUTED};margin-top:2px;">${e.inst}${e.year?'  ·  '+e.year:''}</div>
   </div>`).join('');
 
-  /* ── Two columns: Experience+Achievements+Education+Volunteer (main) |
-        Summary+Skills+Certifications+Training+Languages (sidebar) ── */
-  const mainCol=`${jobs.length?sec(E.secExp)+jobsHTML:''}`+
-    `${listSec(E.secAch,achievements)}`+
-    `${eduHTML?sec(E.secEdu)+eduHTML:''}`+
-    `${listSec(E.secVol,volunteer)}`;
-  const sideCol=`${sec(E.secSum)}<p style="font-size:11.5px;color:${BODY};line-height:1.6;margin:0 0 16px;">${summary}</p>`+
-    `${skills.length?`${sec(E.secSki)}<div style="margin-bottom:16px;">${skillTags}</div>`:''}`+
-    `${listSec(E.secCert,certifications)}`+
-    `${listSec(E.secTrain,training)}`+
-    `${langHTML?`${sec(E.secLng)}${langHTML}`:''}`;
+  /* ── Section blocks (shared by both layouts) ── */
+  const sumBlock=`${sec(E.secSum)}<p style="font-size:11.5px;color:${BODY};line-height:1.6;margin:0 0 16px;">${summary}</p>`;
+  const skiBlock=skills.length?`${sec(E.secSki)}<div style="margin-bottom:16px;">${skillTags}</div>`:'';
+  const expBlock=jobs.length?sec(E.secExp)+jobsHTML:'';
+  const eduBlock=eduHTML?`<div style="margin-bottom:16px;">${sec(E.secEdu)}${eduHTML}</div>`:'';
 
-  return `<div style="font-family:'Inter','Segoe UI',Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;direction:ltr;text-align:left;color:${DARK};padding:38px 44px;line-height:1.55;background:white;">
-    <div style="font-size:30px;font-weight:800;color:${DARK};letter-spacing:.5px;margin-bottom:3px;">${name}</div>
+  /* ── Layout. Uploads → the STANDARD single-flow structure learned from the
+     reference CV set (summary → key achievements → core competencies →
+     experience → education → certifications → training → languages →
+     volunteer), regardless of how the uploaded file was organized.
+     From-scratch CVs keep the two-column design. ── */
+  const header=`<div style="font-size:30px;font-weight:800;color:${DARK};letter-spacing:.5px;margin-bottom:3px;">${name}</div>
     ${title?`<div style="font-size:14.5px;color:${BLUE};font-weight:bold;margin-bottom:9px;">${title}</div>`:''}
     <div style="display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:11px;padding-bottom:12px;border-bottom:2px solid ${BLUE};">${contacts}</div>
     ${metaItems?`<div style="font-size:11px;color:${MUTED};margin-top:8px;">${metaItems}</div>`:''}
-    ${relocate?`<div style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:${BLUE};font-weight:bold;margin-top:10px;"><span style="display:inline-flex;">${icon(I_PLANE,13)}</span>${relocate}</div>`:''}
-    <div style="display:flex;gap:32px;margin-top:20px;align-items:flex-start;">
+    ${relocate?`<div style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:${BLUE};font-weight:bold;margin-top:10px;"><span style="display:inline-flex;">${icon(I_PLANE,13)}</span>${relocate}</div>`:''}`;
+  const wrap=inner=>`<div style="font-family:'Inter','Segoe UI',Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;direction:ltr;text-align:left;color:${DARK};padding:38px 44px;line-height:1.55;background:white;">${header}${inner}</div>`;
+
+  if(cv._fromUpload){
+    const single=`${sumBlock}${listSec(E.secAch,achievements)}${skiBlock}${expBlock}${eduBlock}`+
+      `${listSec(E.secCert,certifications)}${listSec(E.secTrain,training)}`+
+      `${langHTML?`${sec(E.secLng)}<div style="max-width:330px;margin-bottom:16px;">${langHTML}</div>`:''}`+
+      `${listSec(E.secVol,volunteer)}`;
+    return wrap(`<div style="margin-top:20px;">${single}</div>`);
+  }
+
+  const mainCol=`${expBlock}`+
+    `${listSec(E.secAch,achievements)}`+
+    `${eduBlock}`+
+    `${listSec(E.secVol,volunteer)}`;
+  const sideCol=`${sumBlock}`+
+    `${skiBlock}`+
+    `${listSec(E.secCert,certifications)}`+
+    `${listSec(E.secTrain,training)}`+
+    `${langHTML?`${sec(E.secLng)}${langHTML}`:''}`;
+  return wrap(`<div style="display:flex;gap:32px;margin-top:20px;align-items:flex-start;">
       <div style="flex:1.7;min-width:0;">${mainCol}</div>
       <div style="flex:1;min-width:0;">${sideCol}</div>
-    </div>
-  </div>`;
+    </div>`);
 }
 
 /* ══════════════════════════════════════════════
@@ -1389,23 +1557,21 @@ function buildCvDoc(d){
   if(meta)c.push({text:meta,fontSize:9,color:MUTED,margin:[0,6,0,0]});
   if(d.relocate)c.push({text:d.relocate,bold:true,fontSize:9,color:BLUE,margin:[0,meta?2:7,0,0]});
 
+  // Sections follow the STANDARD order learned from the reference CV set:
+  // Summary → Key Achievements → Core Competencies → Professional Experience
+  // → Education → Certifications → Training → Languages → Volunteer.
+
   // ── Professional Summary ──
   c.push(...sectionHeader(L.sum));
   c.push({text:d.summary,fontSize:10,color:BODY,lineHeight:1.3});
 
-  // ── Work Experience ──
-  if(d.jobs.length){
-    c.push(...sectionHeader(L.exp));
-    d.jobs.forEach(j=>{
-      c.push({text:j.title,bold:true,fontSize:11,color:DARK,margin:[0,5,0,0]});
-      if(j.company)c.push({text:j.company,bold:true,fontSize:10,color:BLUE,margin:[0,1,0,0]});
-      const dates=[j.from,j.to].filter(Boolean).join(' – ');
-      if(dates)c.push({text:dates,fontSize:9,color:MUTED,margin:[0,1,0,3]});
-      if(j.duties.length)c.push({ul:j.duties.slice(),fontSize:10,color:BODY,lineHeight:1.3,margin:[0,0,0,4]});
-    });
+  // ── Key Achievements ──
+  if(d.achievements&&d.achievements.length){
+    c.push(...sectionHeader(L.ach));
+    c.push({ul:d.achievements.slice(),fontSize:10,color:BODY,lineHeight:1.3});
   }
 
-  // ── Skills (preserve "Category: items" structure when present) ──
+  // ── Core Competencies (preserve "Category: items" structure when present) ──
   if(d.skills.length){
     c.push(...sectionHeader(L.ski));
     const groups=d.skillGroups||[];
@@ -1419,22 +1585,16 @@ function buildCvDoc(d){
     }
   }
 
-  // ── Certifications ──
-  if(d.certifications&&d.certifications.length){
-    c.push(...sectionHeader(L.cert));
-    c.push({ul:d.certifications.slice(),fontSize:10,color:BODY,lineHeight:1.3});
-  }
-
-  // ── Training & Courses ──
-  if(d.training&&d.training.length){
-    c.push(...sectionHeader(L.train));
-    c.push({ul:d.training.slice(),fontSize:10,color:BODY,lineHeight:1.3});
-  }
-
-  // ── Achievements ──
-  if(d.achievements&&d.achievements.length){
-    c.push(...sectionHeader(L.ach));
-    c.push({ul:d.achievements.slice(),fontSize:10,color:BODY,lineHeight:1.3});
+  // ── Professional Experience ──
+  if(d.jobs.length){
+    c.push(...sectionHeader(L.exp));
+    d.jobs.forEach(j=>{
+      c.push({text:j.title,bold:true,fontSize:11,color:DARK,margin:[0,5,0,0]});
+      if(j.company)c.push({text:j.company,bold:true,fontSize:10,color:BLUE,margin:[0,1,0,0]});
+      const dates=[j.from,j.to].filter(Boolean).join(' – ');
+      if(dates)c.push({text:dates,fontSize:9,color:MUTED,margin:[0,1,0,3]});
+      if(j.duties.length)c.push({ul:j.duties.slice(),fontSize:10,color:BODY,lineHeight:1.3,margin:[0,0,0,4]});
+    });
   }
 
   // ── Education (one or more entries) ──
@@ -1445,6 +1605,18 @@ function buildCvDoc(d){
       const sub=[e.inst,e.year].filter(Boolean).join('  ·  ');
       if(sub)c.push({text:sub,fontSize:9.5,color:MUTED,margin:[0,1,0,0]});
     });
+  }
+
+  // ── Certifications ──
+  if(d.certifications&&d.certifications.length){
+    c.push(...sectionHeader(L.cert));
+    c.push({ul:d.certifications.slice(),fontSize:10,color:BODY,lineHeight:1.3});
+  }
+
+  // ── Training & Courses ──
+  if(d.training&&d.training.length){
+    c.push(...sectionHeader(L.train));
+    c.push({ul:d.training.slice(),fontSize:10,color:BODY,lineHeight:1.3});
   }
 
   // ── Languages ──
@@ -1768,6 +1940,7 @@ async function handleFile(file){
   }
   setProgress(60);
   parseCV(text);
+  standardizeUpload();                 // standard shape: newest-first + computed years total
   const l2=showLoader(s().analyzing);
   try{
     cv.countryCode=cv.countryCode||detectCode(cv.city);
@@ -1897,6 +2070,62 @@ function parseCV(text){
   cv.countryCode=resolveCountryCode(clean,cv.city);
   if(!cv.title)cv.title=(curPos?curPos[1].replace(/\s{2,}/g,' ').replace(/[\s,;|]+$/,'').trim():'')
     ||(cv.jobs[0]&&cv.jobs[0].title)||guessTitle(lines,cv.name)||'';
+}
+
+/* ── Upload standardization (data level) ──
+   Whatever the uploaded file's layout was, the OUTPUT follows the standard
+   professional shape learned from the reference CV set: experience and
+   education newest-first, plus a computed "N+ years" total that feeds the
+   standard summary formula. */
+const UP_MONTH={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+// "Oct 2024" / "10/2024" / "2024" / "Present" → comparable month index (or null)
+function dateKeyM(str){
+  const t=(str||'').toLowerCase();
+  if(/present|current|ongoing|\bnow\b|حتى الآن/.test(t))return'now';
+  const y=t.match(/\b(19|20)\d{2}\b/);if(!y)return null;
+  const mn=t.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)/);
+  const md=t.match(/\b(\d{1,2})\s*[\/.]/);
+  const mo=mn?UP_MONTH[mn[1]]:(md?Math.min(12,Math.max(1,+md[1])):6);   // year-only → mid-year
+  return (+y[0])*12+(mo-1);
+}
+function standardizeUpload(){
+  const now=new Date(),nowKey=now.getFullYear()*12+now.getMonth();
+  const keys=cv.jobs.map(j=>{
+    let a=dateKeyM(j.from),b=dateKeyM(j.to);
+    if(a==='now')a=nowKey;
+    if(b==='now')b=nowKey;
+    return{start:a,end:(b!=null?b:a)};
+  });
+  // total career span → "16+ years" (feeds the standard summary + edit form)
+  let minS=Infinity,maxE=-Infinity;
+  keys.forEach(k=>{
+    if(k.start!=null)minS=Math.min(minS,k.start);
+    if(k.end!=null)maxE=Math.max(maxE,k.end);
+  });
+  if(minS!==Infinity&&maxE>=minS){
+    const yrs=Math.min(45,Math.floor((maxE-minS)/12));
+    cv.yearsExp=yrs>=1?yrs+'+ years':'1 year';
+  }
+  // experience newest-first — only when EVERY job carries a parsable date, so a
+  // partial parse can never scramble an already-ordered CV
+  if(cv.jobs.length>1&&keys.every(k=>k.end!=null)){
+    cv.jobs=cv.jobs.map((j,i)=>({j,k:keys[i],i}))
+      .sort((x,y)=>(y.k.end-x.k.end)
+        ||((y.k.start!=null?y.k.start:y.k.end)-(x.k.start!=null?x.k.start:x.k.end))
+        ||(x.i-y.i))
+      .map(o=>o.j);
+  }
+  // education newest-first under the same all-dated rule
+  if((cv.eduList||[]).length>1){
+    const ky=e=>{const ys=((e.year||'')+' '+(e.level||'')).match(/(19|20)\d{2}/g);return ys?+ys[ys.length-1]:null;};
+    const eks=cv.eduList.map(ky);
+    if(eks.every(k=>k!=null)){
+      cv.eduList=cv.eduList.map((e,i)=>({e,k:eks[i],i}))
+        .sort((x,y)=>(y.k-x.k)||(x.i-y.i)).map(o=>o.e);
+      const e0=cv.eduList[0];
+      cv.eduLevel=e0.level;cv.eduField=e0.field;cv.eduInst=e0.inst;cv.eduYear=e0.year;
+    }
+  }
 }
 
 // Languages in a sidebar are often STACKED — the language name on one line and its
