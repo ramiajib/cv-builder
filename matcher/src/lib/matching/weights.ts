@@ -1,14 +1,19 @@
 // Dimension weights — must sum to 1.00
 // Adjust these to tune matching quality as you gather feedback data.
+//
+// Content signals (skills + semantic/occupation relevance) carry ~55% so that
+// genuine field alignment — not generic location/seniority overlap — drives the
+// score. This is what stops unrelated jobs (e.g. a pharmacist matched to a
+// coffee-roaster posting) from landing in the "excellent" tier.
 export const WEIGHTS = {
-  skills:        0.35,
-  experience:    0.20,
-  semantic:      0.15,  // pgvector cosine similarity
+  skills:        0.30,
+  semantic:      0.25,  // occupation/content relevance (or pgvector if available)
+  experience:    0.15,
   seniority:     0.10,
-  education:     0.08,
-  location:      0.06,
+  location:      0.07,
+  education:     0.06,
   language:      0.04,
-  certification: 0.02,
+  certification: 0.03,
 } as const;
 
 export const GCC_COUNTRIES = new Set(['SA', 'AE', 'QA', 'KW', 'BH', 'OM']);

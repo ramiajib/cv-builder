@@ -1,15 +1,32 @@
-import type { CandidateProfile, JobProfile, Skill, JobSkill, Language, Education, Certification } from '../supabase/types';
+import type { CandidateProfile, JobProfile, Language, Education, Certification } from '../supabase/types';
 import type { DimensionScores, Gap, MatchResult, Strength } from './types';
 import { DEGREE_RANK, GCC_COUNTRIES, SENIORITY_RANK, WEIGHTS } from './weights';
+import { classifyOccupation, scoreRelevance, scoreSkillsFromText } from './relevance';
 
 // ─────────────────────────────────────────────────────────────
 // DIMENSION SCORERS — pure functions, 0–100 each
 // ─────────────────────────────────────────────────────────────
 
-export function scoreSkills(candidateSkills: Skill[], jobSkills: JobSkill[]): number {
-  if (jobSkills.length === 0) return 100;
+export function scoreSkills(candidate: CandidateProfile, job: JobProfile): number {
+  const jobSkills = job.job_skills ?? [];
+  const aiSkills = job.ai_extracted_skills ?? [];
 
+  // Most scraped jobs have NO structured skills. Returning 100 here was the
+  // core bug — it handed every unrelated job a free 35% of the score.
+  // Fall back to a text-based skill overlap that actually discriminates.
+  if (jobSkills.length === 0 && aiSkills.length === 0) {
+    return scoreSkillsFromText(candidate, job);
+  }
+
+  const candidateSkills = candidate.skills ?? [];
   const candidateSet = new Set(candidateSkills.map(s => s.normalized_name.toLowerCase().trim()));
+
+  // If only ai_extracted_skills exist (no required/optional split), treat
+  // them as a flat required set.
+  if (jobSkills.length === 0 && aiSkills.length > 0) {
+    const matched = aiSkills.filter(s => candidateSet.has(s.toLowerCase().trim())).length;
+    return Math.round((matched / aiSkills.length) * 100);
+  }
 
   const required = jobSkills.filter(s => s.is_required);
   const optional = jobSkills.filter(s => !s.is_required);
@@ -154,6 +171,14 @@ function identifyStrengths(
 ): Strength[] {
   const strengths: Strength[] = [];
 
+  // Strong occupation/domain alignment
+  if (scores.semantic >= 70) {
+    strengths.push({
+      label: 'Relevant field',
+      detail: `Your background lines up with the "${job.title}" role`,
+    });
+  }
+
   // Strong skill match
   if (scores.skills >= 75) {
     const matched = candidate.skills
@@ -235,11 +260,35 @@ function identifyStrengths(
 // ─────────────────────────────────────────────────────────────
 // GAPS IDENTIFIER
 // ─────────────────────────────────────────────────────────────
-function identifyGaps(candidate: CandidateProfile, job: JobProfile): Gap[] {
+function identifyGaps(candidate: CandidateProfile, job: JobProfile, scores: DimensionScores): Gap[] {
   const gaps: Gap[] = [];
   const candidateSkillSet = new Set(
     candidate.skills.map(s => s.normalized_name.toLowerCase().trim()),
   );
+
+  // Off-domain warning — the single most useful "gap" for these listings.
+  if (scores.semantic < 45) {
+    const candFamilies = classifyOccupation(
+      [
+        candidate.headline ?? '',
+        ...candidate.experiences.map(e => e.title),
+        ...candidate.skills.map(s => s.name),
+      ].join(' '),
+    );
+    const jobFamilies = classifyOccupation(
+      [job.title, job.industry ?? '', job.description ?? ''].join(' '),
+    );
+    const sharesDomain = [...candFamilies].some(f => jobFamilies.has(f));
+    if (!sharesDomain) {
+      gaps.push({
+        item: 'Different field from your background',
+        type: 'experience',
+        importance: 'required',
+        how_to_close:
+          'This role is outside your core experience — apply only if you are deliberately switching fields, and explain the pivot in your cover note',
+      });
+    }
+  }
 
   // Missing required skills (show max 3)
   const missingRequired = job.job_skills
@@ -310,23 +359,25 @@ function identifyGaps(candidate: CandidateProfile, job: JobProfile): Gap[] {
 
 /**
  * Compute a match score between a candidate and a job.
- * @param semanticScore  Pre-computed cosine similarity (0–100) from pgvector.
- *                       Pass 70 as a neutral default if embeddings aren't available.
+ * @param semanticScore  Optional pre-computed cosine similarity (0–100) from
+ *                       pgvector. When omitted, a deterministic content/
+ *                       occupation-relevance score is computed from the job
+ *                       and candidate text — no embeddings or API required.
  */
 export function computeMatchScore(
   candidate: CandidateProfile,
   job: JobProfile,
-  semanticScore = 70,
+  semanticScore?: number,
 ): MatchResult {
   const scores: DimensionScores = {
-    skills:        scoreSkills(candidate.skills, job.job_skills),
+    skills:        scoreSkills(candidate, job),
     experience:    scoreExperience(candidate, job),
     seniority:     scoreSeniority(candidate.seniority_level ?? 'mid', job.seniority_level ?? 'mid'),
     education:     scoreEducation(candidate.education, job.ai_required_degree),
     location:      scoreLocation(candidate, job),
     language:      scoreLanguage(candidate.languages, job),
     certification: scoreCertification(candidate.certifications, job.required_certifications),
-    semantic:      semanticScore,
+    semantic:      semanticScore ?? scoreRelevance(candidate, job),
   };
 
   const composite = Math.round(
@@ -351,6 +402,6 @@ export function computeMatchScore(
     tier,
     ...scores,
     strengths: identifyStrengths(candidate, job, scores),
-    gaps: identifyGaps(candidate, job),
+    gaps: identifyGaps(candidate, job, scores),
   };
 }
